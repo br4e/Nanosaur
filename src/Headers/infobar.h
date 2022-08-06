@@ -4,7 +4,7 @@
 
 #define	MAX_FUEL_CAPACITY	(29-1)
 #define	NUM_EGG_SPECIES		5
-#define LEVEL_DURATION		(60*20)			// n seconds
+#define LEVEL_DURATION		3599 // 1 hour
 
 enum
 {
@@ -30,4 +30,3 @@ extern	void AddToScore(long points);
 extern	void DoPaused(void);
 extern	void DecAsteroidTimer(void);
 extern	void GetHealth(float amount);
-

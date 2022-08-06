@@ -35,8 +35,8 @@ static void MovePteraRock(ObjNode *theRock);
 
 #define	PTERA_SCALE			1.0f
 
-#define	PTERA_HEALTH		.5f		
-#define	PTERA_DAMAGE		0.03f
+#define	PTERA_HEALTH		.5f
+#define	PTERA_DAMAGE		0.04f
 
 #define	ATTACK_DIST			300
 
@@ -77,14 +77,14 @@ ObjNode	*newObj;
 	if (gNumEnemies >= MAX_ENEMIES)				// keep from getting absurd
 		return(false);
 
-	if (!(itemPtr->parm[3] & 1))				// see if always add 
+	if (!(itemPtr->parm[3] & 1))				// see if always add
 	{
 		if (gNumEnemyOfKind[ENEMY_KIND_PTERA] >= MAX_PTERA)
 			return(false);
 	}
 
 				/* MAKE DEFAULT SKELETON ENEMY */
-				
+
 	newObj = MakeEnemySkeleton(SKELETON_TYPE_PTERA,x,z);
 	if (newObj == nil)
 		return(false);
@@ -93,40 +93,40 @@ ObjNode	*newObj;
 
 
 			/* SEE IF ROCK-DROPPER */
-			
+
 	newObj->RockDropper = itemPtr->parm[3] & (1<<1);
 	if (newObj->RockDropper)
 	{
 		AttachARock(newObj);
-		SetSkeletonAnim(newObj->Skeleton, PTERA_ANIM_CARRY);	
+		SetSkeletonAnim(newObj->Skeleton, PTERA_ANIM_CARRY);
 	}
 	else
 		SetSkeletonAnim(newObj->Skeleton, PTERA_ANIM_FLY);
-		
-	newObj->Skeleton->AnimSpeed = RandomFloat()*.5 + 1;	
+
+	newObj->Skeleton->AnimSpeed = RandomFloat()*.5 + 1;
 	newObj->Scale.x = newObj->Scale.y = newObj->Scale.z = PTERA_SCALE;
 	newObj->Radius *= PTERA_SCALE;
-	
+
 
 				/* SET BETTER INFO */
-			
+
 	newObj->Coord.y += FLIGHT_HEIGHT;
 	newObj->MoveCall = MovePtera;							// set move call
 	newObj->Health = PTERA_HEALTH;
 	newObj->Damage = PTERA_DAMAGE;
 	newObj->Kind = ENEMY_KIND_PTERA;
 	newObj->Occillate = RandomFloat();
-	
-	
+
+
 				/* SET COLLISION INFO */
-				
+
 	SetObjectCollisionBounds(newObj, 40,-40,-70,70,70,-70);
 	CalcNewTargetOffsets(newObj,PTERA_TARGET_SCALE);
 	newObj->TargetChangeTimer = RandomFloat()*5;
 
 
 					/* MAKE SHADOW */
-					
+
 	AttachShadowToObject(newObj, 4, 4.5);
 
 	gNumEnemies++;
@@ -141,8 +141,8 @@ static void AttachARock(ObjNode *theEnemy)
 {
 ObjNode	*newObj;
 
-	gNewObjectDefinition.group = LEVEL0_MGroupNum_Boulder2;	
-	gNewObjectDefinition.type = LEVEL0_MObjType_Boulder2;	
+	gNewObjectDefinition.group = LEVEL0_MGroupNum_Boulder2;
+	gNewObjectDefinition.type = LEVEL0_MObjType_Boulder2;
 	gNewObjectDefinition.scale = .4;
 	gNewObjectDefinition.coord = gCoord;
 	gNewObjectDefinition.flags = 0;
@@ -154,10 +154,10 @@ ObjNode	*newObj;
 	{
 		theEnemy->ChainNode = newObj;					// setup chain links
 		newObj->ChainHead = theEnemy;
-	
-		theEnemy->HasRock = true;	
+
+		theEnemy->HasRock = true;
 	}
-}	
+}
 
 
 /***************** MOVE PTERA ROCK ************************/
@@ -169,32 +169,32 @@ TQ3Point3D inPoint = {10,-10,80};
 
 
 			/* SEE IF STILL ATTACHED TO ENEMY */
-			
+
 	theEnemy = theRock->ChainHead;
 	if (theEnemy)
 	{
 		FindCoordOnJoint(theEnemy, 3, &inPoint, &theRock->Coord);
 		UpdateObjectTransforms(theRock);
 	}
-	
+
 			/* NOT ATTACHED ANYMORE */
 	else
 	{
 		GetObjectInfo(theRock);
-		
-		gDelta.y -= GRAVITY_CONSTANT * gFramesPerSecondFrac;		
+
+		gDelta.y -= GRAVITY_CONSTANT * gFramesPerSecondFrac;
 
 		gCoord.x += gDelta.x * gFramesPerSecondFrac;
 		gCoord.y += gDelta.y * gFramesPerSecondFrac;
 		gCoord.z += gDelta.z * gFramesPerSecondFrac;
-		
+
 		if (gCoord.y <= GetTerrainHeightAtCoord_Planar(gCoord.x,gCoord.y))
-		{		
+		{
 			QD3D_ExplodeGeometry(theRock, 400, 0, 2, .4);
 			DeleteObject(theRock);
 			return;
 		}
-		
+
 		UpdateObject(theRock);
 	}
 
@@ -213,9 +213,9 @@ ObjNode *theRock;
 		theEnemy->ChainNode = nil;
 		theRock->ChainHead = nil;
 		theRock->Delta = gDelta;
-		
+
 		theRock->CType = CTYPE_HURTME;
-		theRock->CBits = CBITS_TOUCHABLE;		
+		theRock->CBits = CBITS_TOUCHABLE;
 		theRock->Damage = .1;
 		SetObjectCollisionBounds(theRock,30,-30,-30,30,30,-30);
 
@@ -254,21 +254,21 @@ float	r,aim,dist,fps = gFramesPerSecondFrac;
 float	occ,y;
 
 			/* AIM AT PLAYER */
-			
-	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, PTERA_TURN_SPEED, true);			
-		
-		
+
+	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, PTERA_TURN_SPEED, true);
+
+
 				/* MOVE IT */
-				
+
 	occ = theNode->Occillate += fps * 2.0f;		// inc occilation index
-				
+
 	r = theNode->Rot.y;
-	theNode->Speed = PTERA_WALK_SPEED;	
+	theNode->Speed = PTERA_WALK_SPEED;
 	gDelta.x = -sin(r) * PTERA_WALK_SPEED;
 	gDelta.z = -cos(r) * PTERA_WALK_SPEED;
 	y = gMyCoord.y + 200 + cos(occ)*150;		// calc desired y offset
 	gDelta.y = (y - gCoord.y);
-	
+
 	MoveEnemy(theNode,-FLIGHT_HEIGHT);
 
 
@@ -282,7 +282,7 @@ float	occ,y;
 
 
 			/* SEE IF SHOULD ATTACK */
-			
+
 	if (aim < 0.5f)
 	{
 		if ((gCoord.y - gMyCoord.y) > 100.0f)				// must be above me a ways
@@ -300,14 +300,14 @@ float	occ,y;
 		}
 	}
 
-	
+
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES&(~CTYPE_BGROUND2)))		// normal collision but no BG2 for flying things
 		return;
 
 
-	UpdateEnemy(theNode);		
+	UpdateEnemy(theNode);
 }
 
 
@@ -320,16 +320,16 @@ float	fps = gFramesPerSecondFrac;
 Boolean	onGround;
 
 			/* MOVE TOWARD PLAYER */
-			
-	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, PTERA_TURN_SPEED*1.5, false);			
 
-		
+	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, PTERA_TURN_SPEED*1.5, false);
+
+
 		/* MOVE IT */
 
 	r = theNode->Rot.y;
 	gDelta.x = -sin(r) * PTERA_WALK_SPEED;
 	gDelta.z = -cos(r) * PTERA_WALK_SPEED;
-	
+
 	dy = (gMyCoord.y + 80 - gCoord.y) * 2.3f;
 	gDelta.y += dy * fps;
 
@@ -343,14 +343,14 @@ Boolean	onGround;
 		MorphToSkeletonAnim(theNode->Skeleton, PTERA_ANIM_FLY,2);
 	}
 
-	
+
 		/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
 
-	UpdateEnemy(theNode);		
+	UpdateEnemy(theNode);
 }
 
 
@@ -363,21 +363,21 @@ float	r,aim,dist,fps = gFramesPerSecondFrac;
 float	occ,y;
 
 			/* AIM AT PLAYER */
-			
-	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, PTERA_TURN_SPEED, true);			
-		
-		
+
+	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, PTERA_TURN_SPEED, true);
+
+
 				/* MOVE IT */
-				
+
 	occ = theNode->Occillate += fps * 2.0f;		// inc occilation index
-				
+
 	r = theNode->Rot.y;
-	theNode->Speed = PTERA_WALK_SPEED;	
+	theNode->Speed = PTERA_WALK_SPEED;
 	gDelta.x = -sin(r) * PTERA_WALK_SPEED;
 	gDelta.z = -cos(r) * PTERA_WALK_SPEED;
 	y = gMyCoord.y + 300 + cos(occ)*150;		// calc desired y offset
 	gDelta.y = (y - gCoord.y);
-	
+
 	MoveEnemy(theNode,-FLIGHT_HEIGHT);
 
 
@@ -392,7 +392,7 @@ float	occ,y;
 			/***************************/
 			/* SEE IF SHOULD DROP ROCK */
 			/***************************/
-			
+
 	if (aim < 0.5f)
 	{
 		if ((gCoord.y - gMyCoord.y) > 100.0f)				// must be above me a ways
@@ -410,19 +410,12 @@ float	occ,y;
 		}
 	}
 
-	
+
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES&(~CTYPE_BGROUND2)))		// normal collision but no BG2 for flying things
 		return;
 
 
-	UpdateEnemy(theNode);		
+	UpdateEnemy(theNode);
 }
-
-
-
-
-
-
-

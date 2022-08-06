@@ -140,11 +140,21 @@ ObjNode	*hitObj;
 
 		UInt16 enemyTile = GetTileAttribs(theEnemy->Coord.x, theEnemy->Coord.z);
 		if (enemyTile & TILE_ATTRIB_LAVA) {
-			MakeSmokePuff(theEnemy->Coord.x, theEnemy->Coord.y, theEnemy->Coord.z, .1);
 
 			if (EnemyGotHurt(theEnemy,hitObj,.01)) {
 				// handle hit (returns true if was deleted)
 				return(true);
+			}
+
+			theEnemy->LavaSmokeCounter += gFramesPerSecondFrac;
+			if (theEnemy->LavaSmokeCounter > .08f)
+			{
+				theEnemy->LavaSmokeCounter = 0.0f;
+				MakeSmokePuff(
+					(RandomFloat() - .5f) * 40.0f + gCoord.x,
+					gCoord.y,
+					(RandomFloat() - .5f) * 40.0f + gCoord.z,
+					.1);
 			}
 		}
 

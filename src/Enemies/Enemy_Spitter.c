@@ -37,7 +37,7 @@ static void MoveDinoSpit(ObjNode *theNode);
 #define	SPITTER_TARGET_SCALE	200.0f
 
 
-#define	SPITTER_HEALTH		2f
+#define	SPITTER_HEALTH		2.0f
 #define	SPITTER_DAMAGE		0.02f
 
 #define	SPITTER_SCALE		.8f

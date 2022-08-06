@@ -38,10 +38,10 @@ static void  MoveRex_Pounce(ObjNode *theNode);
 
 #define	REX_TARGET_SCALE	200.0f
 
-#define	MAX_WALK_SPEED		200.0f
+#define	MAX_WALK_SPEED		250.0f
 
 
-#define	REX_HEALTH		2.0f
+#define	REX_HEALTH		3.0f
 #define	REX_DAMAGE		0.08f
 
 #define	REX_SCALE		1.2f

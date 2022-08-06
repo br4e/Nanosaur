@@ -75,11 +75,11 @@ static const int enemyPoints[]=
 	500,
 	500
 };
-	
+
 	AddToScore(enemyPoints[theEnemy->Kind]);	// get points
-	
+
 	QD3D_ExplodeGeometry(theEnemy, 570.0f, 0, EXPLODEGEOMETRY_DENOMINATOR, .4);
-	
+
 	DeleteEnemy(theEnemy);
 	PlayEffect(EFFECT_ENEMYDIE);
 }
@@ -98,16 +98,19 @@ Boolean DoEnemyCollisionDetect(ObjNode *theEnemy, uint32_t ctype)
 {
 ObjNode	*hitObj;
 
+		/* AUTOMATICALLY HANDLE THE BORING STUFF */
 
-			/* AUTOMATICALLY HANDLE THE BORING STUFF */
-			
-	HandleCollisions(theEnemy, ctype);
+		HandleCollisions(theEnemy, ctype);
+
+
+		/* HANDLE LAVA */
+
+
 
 
 			/******************************/
 			/* SCAN FOR INTERESTING STUFF */
 			/******************************/
-			
 
 	for (int i = 0; i < gNumCollisions; i++)
 	{
@@ -115,7 +118,9 @@ ObjNode	*hitObj;
 		{
 			hitObj = gCollisionList[i].objectPtr;						// get ObjNode of this collision
 			ctype = hitObj->CType;
-			
+
+
+
 			if (ctype & CTYPE_HURTENEMY)
 			{
 				if (EnemyGotHurt(theEnemy,hitObj,hitObj->Damage))		// handle hit (returns true if was deleted)
@@ -128,8 +133,20 @@ ObjNode	*hitObj;
 				PlayerGotHurt(hitObj,theEnemy->Damage, true, false);
 			}
 		}
+
 	}
-	
+
+		UInt16 enemyTile = GetTileAttribs(theEnemy->Coord.x, theEnemy->Coord.z);
+		if (enemyTile & TILE_ATTRIB_LAVA) {
+			MakeSmokePuff(theEnemy->Coord.x, theEnemy->Coord.y, theEnemy->Coord.z, .1);
+
+			if (EnemyGotHurt(theEnemy,hitObj,.01)) {
+				// handle hit (returns true if was deleted)
+				return(true);
+			}
+		}
+
+
 	return(false);
 }
 
@@ -149,20 +166,20 @@ Boolean EnemyGotHurt(ObjNode *theEnemy, ObjNode *theHurter, float damage)
 
 
 			/* LOSE HEALTH */
-			
+
 	theEnemy->Health -= damage;
-	
-	
+
+
 			/* HANDLE DEATH OF ENEMY */
-			
+
 	if (theEnemy->Health <= 0)
 	{
 		KillEnemy(theEnemy);
 		return(true);
 	}
-	
-	
-	
+
+
+
 	return(false);
 }
 
@@ -187,14 +204,14 @@ ObjNode *FindClosestEnemy(TQ3Point3D *pt, float *dist)
 ObjNode		*thisNodePtr,*best = nil;
 float	d,minDist = 100000;
 
-			
+
 	thisNodePtr = gFirstNodePtr;
-	
+
 	do
 	{
 		if (thisNodePtr->Slot >= SLOT_OF_DUMB)					// see if reach end of usable list
 			break;
-	
+
 		if (thisNodePtr->CType & CTYPE_ENEMY)
 		{
 			d = CalcQuickDistance(pt->x,pt->z,thisNodePtr->Coord.x, thisNodePtr->Coord.z);
@@ -203,7 +220,7 @@ float	d,minDist = 100000;
 				minDist = d;
 				best = thisNodePtr;
 			}
-		}	
+		}
 		thisNodePtr = (ObjNode *)thisNodePtr->NextNode;		// next node
 	}
 	while (thisNodePtr != nil);
@@ -226,7 +243,7 @@ float	d,minDist = 100000;
 ObjNode *MakeEnemySkeleton(Byte skeletonType, float x, float z)
 {
 ObjNode	*newObj;
-	
+
 			/****************************/
 			/* MAKE NEW SKELETON OBJECT */
 			/****************************/
@@ -245,13 +262,13 @@ ObjNode	*newObj;
 	newObj = MakeNewSkeletonObject(&gNewObjectDefinition);
 	if (newObj == nil)
 		DoFatalAlert("MakeEnemySkeleton: MakeNewSkeletonObject failed!");
-	
-	
+
+
 				/* SET DEFAULT COLLISION INFO */
-				
+
 	newObj->CType = CTYPE_ENEMY | CTYPE_HURTIFTOUCH;
 	newObj->CBits = CBITS_ALLSOLID;
-	
+
 //	SIDE_BITS_LEFT | SIDE_BITS_RIGHT | SIDE_BITS_FRONT |	// not solid on bottom or top
 //					 SIDE_BITS_BACK;
 	return(newObj);
@@ -275,7 +292,7 @@ float	y;
 
 
 			/* SEE IF ON GROUND */
-			
+
 	y = GetTerrainHeightAtCoord_Planar(gCoord.x, gCoord.z);		// get center Y
 	if ((gCoord.y + flightHeight) < y)
 	{
@@ -287,17 +304,3 @@ float	y;
 	theNode->StatusBits &= ~STATUS_BIT_ONGROUND;
 	return(false);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

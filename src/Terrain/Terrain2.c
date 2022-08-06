@@ -131,29 +131,29 @@ trail:
 	{
 		gTerrainItemLookupTableX[col] = lastPtr;
 	}
-	
-	
+
+
 			/*********************/
 			/* BUILD LINKED LIST */
 			/*********************/
-			
+
 		/* MANUALLY BUILD 1ST & LAST NODES */
-			
+
 	gMasterItemList[0].prevItemIdx = -1;													// 1st has no prev
 	gMasterItemList[0].nextItemIdx = 1;														// link to next
 
 	gMasterItemList[gNumTerrainItems-1].prevItemIdx = gNumTerrainItems-2;					// 1st has no prev
 	gMasterItemList[gNumTerrainItems-1].nextItemIdx = -1;									// last has no next
-	
-	
+
+
 			/* LINK ALL THE OTHERS */
-				
+
 	for (itemNum = 1; itemNum < (gNumTerrainItems-1); itemNum++)
 	{
 		gMasterItemList[itemNum].prevItemIdx = itemNum - 1;
 		gMasterItemList[itemNum].nextItemIdx = itemNum + 1;
-	}		
-	
+	}
+
 }
 
 
@@ -173,8 +173,8 @@ long	i;
 	for (i= 0; i < gNumTerrainItems; i++)
 		if (gMasterItemList[i].type == MAP_ITEM_MYSTARTCOORD)							// see if it's a MyStartCoord item
 		{
-			gMyCoord.x = gMyStartX = (gMasterItemList[i].x * MAP2UNIT_VALUE);	// convert to world coords
-			gMyCoord.z = gMyStartZ = gMasterItemList[i].y * MAP2UNIT_VALUE;
+			gMyCoord.x = gMyStartX = 28500; // (gMasterItemList[i].x * MAP2UNIT_VALUE);	// convert to world coords
+			gMyCoord.z = gMyStartZ = 42500; // gMasterItemList[i].y * MAP2UNIT_VALUE;
 			gMyStartAim = gMasterItemList[i].parm[0];							// get aim 0..7
 			return;
 		}
@@ -231,7 +231,7 @@ long			realX,realZ;
 				{
 					realX = itemPtr->x * MAP2UNIT_VALUE;		// calc & pass 3-space coords
 					realZ = itemPtr->y * MAP2UNIT_VALUE;
-			
+
 					flag = gTerrainItemAddRoutines[type](itemPtr,realX, realZ); 	// call item's ADD routine
 					if (flag)
 						itemPtr->flags |= ITEM_FLAGS_INUSE;		// set in-use flag
@@ -353,7 +353,7 @@ UInt16	GetPathTileNumAtRowCol(long row, long col)
 UInt16 tile;
 
 	tile = gTerrainPathLayer[row][col];							// get path data from map
-	tile = tile&TILENUM_MASK; 							  		// filter out tile # 
+	tile = tile&TILENUM_MASK; 							  		// filter out tile #
 
 	return(tile);
  }
@@ -376,10 +376,10 @@ TQ3Matrix4x4	*matrix = &theNode->BaseTransformMatrix;
 TQ3Vector3D		lookAt,upVector,theXAxis;
 
 	Q3Matrix4x4_SetIdentity(matrix);											// init the matrix
-	
+
 	rotY = theNode->Rot.y;
-	
-	
+
+
 			/* CALC TERRAIN HEIGHT IN FRONT,BACK,LEFT & RIGHT */
 
 	sinRot = sin(rotY)*endOff;
@@ -421,14 +421,14 @@ TQ3Vector3D		lookAt,upVector,theXAxis;
 	matrix->value[2][0] = lookAt.x;
 	matrix->value[2][1] = lookAt.y;
 	matrix->value[2][2] = lookAt.z;
-	
+
 
 			/* CALC UP VECTOR */
 
 	{
 		theXAxis.x = right.x - left.x;							// first calc left->right vector
-		theXAxis.y = right.y - left.y;	
-		theXAxis.z = right.z - left.z;	
+		theXAxis.y = right.y - left.y;
+		theXAxis.z = right.z - left.z;
 		Q3Vector3D_Normalize(&theXAxis,&theXAxis);
 	}
 
@@ -440,26 +440,26 @@ TQ3Vector3D		lookAt,upVector,theXAxis;
 
 
 		/* CALC THE X-AXIS VECTOR */
-		
+
 	matrix->value[0][0] = theXAxis.x;
 	matrix->value[0][1] = theXAxis.y;
 	matrix->value[0][2] = theXAxis.z;
 
 		/* POP IN THE TRANSLATE INTO THE MATRIX */
-			
+
 	matrix->value[3][0] = theNode->Coord.x;
 	matrix->value[3][1] = theNode->Coord.y;
 	matrix->value[3][2] = theNode->Coord.z;
 
 
 			/* SET SCALE IF ANY */
-			
+
 	if ((theNode->Scale.x != 1) || (theNode->Scale.y != 1) || (theNode->Scale.z != 1))		// see if ignore scale
 	{
 		TQ3Matrix4x4	matrix2;
-		
+
 		Q3Matrix4x4_SetScale(&matrix2, theNode->Scale.x,		// make scale matrix
-								 theNode->Scale.y,			
+								 theNode->Scale.y,
 								 theNode->Scale.z);
 		Q3Matrix4x4_Multiply(&matrix2, matrix, matrix);
 

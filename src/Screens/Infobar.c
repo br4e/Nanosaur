@@ -98,10 +98,10 @@ short	i;
 
 	gNumLives = 2;
 	gScore = 0;
-	gFuel = 0; //MAX_FUEL_CAPACITY/6;
+	gFuel = MAX_FUEL_CAPACITY/6;
 	gTimeRemaining = LEVEL_DURATION;
 	gOldTime = 1000000000;
-	
+
 	for (i=0; i < NUM_EGG_SPECIES; i++)
 		gRecoveredEggs[i] = 0;
 }
@@ -169,7 +169,7 @@ unsigned long	bits;
 	bits = gInfobarUpdateBits;
 
 		/* SHOW ATTACK MODE */
-	
+
 	if (bits & UPDATE_WEAPONICON)
 	{
 		DrawSpriteFrameToScreen(SPRITE_GROUP_INFOBAR, gCurrentAttackMode, WEAPON_ICON_X, WEAPON_ICON_Y);
@@ -177,7 +177,7 @@ unsigned long	bits;
 	}
 
 		/* SHOW SCORE */
-		
+
 	if (bits & UPDATE_SCORE)
 		PrintNumber(gScore,8, SCORE_X,SCORE_Y);
 
@@ -189,25 +189,25 @@ unsigned long	bits;
 								 FUEL_X, FUEL_Y);
 
 		/* UPDATE TIMERS */
-		
+
 	if (bits & UPDATE_IMPACTTIME)
 		ShowTimeRemaining();
 
 
 		/* UPDATE HEALTH */
-		
+
 	if (bits & UPDATE_HEALTH)
 		ShowHealth();
 
 
 		/* UPDATE EGGS */
-		
+
 	if (bits & UPDATE_EGGS)
 		ShowEggs();
-		
-		
+
+
 		/* UPDATE LIVES */
-		
+
 	if (bits & UPDATE_LIVES)
 		PrintNumber(gNumLives,1, LIVES_X,LIVES_Y);
 
@@ -222,22 +222,22 @@ void NextAttackMode(void)
 short	i;
 
 			/* SCAN FOR NEXT AVAILABLE ATTACK MODE */
-			
+
 	i = gCurrentAttackMode;
-	
+
 	do
 	{
 		if (++i >= NUM_ATTACK_MODES)						// see if wrap around
 			i = 0;
-	
+
 		if (gPossibleAttackModes[i])						// can I do this one?
 			break;
-			
+
 	}while(i !=	gCurrentAttackMode);
 
 
 			/* SEE IF IT CHANGED */
-			
+
 	if (i != gCurrentAttackMode)
 	{
 		gCurrentAttackMode = i;
@@ -287,7 +287,7 @@ short	minutes,seconds;
 
 	minutes = (int)gTimeRemaining / 60;				// calc # minutes
 	seconds = (int)gTimeRemaining - (minutes * 60);	// calc # seconds
-	
+
 	PrintNumber(seconds, 2, TIME_REM_X+38, TIME_REM_Y);
 	PrintNumber(minutes, 2, TIME_REM_X, TIME_REM_Y);
 }
@@ -302,7 +302,7 @@ Rect	r;
 static const RGBColor	color = {0x9000,0,0x0800};
 
 			/* GET MY HEALTH */
-			
+
 	health = gMyHealth;
 	if (health < 0)
 		health = 0;
@@ -322,12 +322,12 @@ static const RGBColor	color = {0x9000,0,0x0800};
 	PaintRect(&r);
 
 				/* ERASE TAIL */
-					
+
 	ForeColor(blackColor);
 	r.left = r.right;
 	r.right = HEALTH_METER_X+HEALTH_METER_WIDTH;
 	PaintRect(&r);
-	
+
 }
 
 
@@ -335,16 +335,16 @@ static const RGBColor	color = {0x9000,0,0x0800};
 
 static void UpdateInfobarIcon(ObjNode *theNode)
 {
-TQ3Matrix4x4	matrix,matrix2,matrix3;	
+TQ3Matrix4x4	matrix,matrix2,matrix3;
 
 			/* APPLY SCALE TO OBJECT */
-				
+
 	Q3Matrix4x4_SetScale(&matrix, theNode->Scale.x,		// make scale matrix
-							 theNode->Scale.y,			
+							 theNode->Scale.y,
 							 theNode->Scale.z);
 
 			/* APPLY LOCAL ROTATION TO OBJECT */
-			
+
 	Q3Matrix4x4_SetRotate_XYZ(&matrix2,theNode->Rot.x,theNode->Rot.y,theNode->Rot.z);
 	Q3Matrix4x4_Multiply(&matrix,&matrix2,&matrix3);
 
@@ -353,8 +353,8 @@ TQ3Matrix4x4	matrix,matrix2,matrix3;
 
 	Q3Matrix4x4_SetTranslate(&matrix2,theNode->Coord.x,theNode->Coord.y,theNode->Coord.z);
 	Q3Matrix4x4_Multiply(&matrix3,&matrix2,&matrix);
-	
-	
+
+
 			/* TRANSFORM TO WORLD COORDINATES */
 
 	Q3Matrix4x4_Multiply(&matrix,&gCameraAdjustMatrix,&theNode->BaseTransformMatrix);
@@ -378,7 +378,7 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 			/***************/
 			/* MAKE RESUME */
 			/***************/
-			
+
 	gNewObjectDefinition.group = MODEL_GROUP_INFOBAR;
 	gNewObjectDefinition.type = INFOBAR_ObjType_Resume;
 	gNewObjectDefinition.coord.x = 0;
@@ -394,7 +394,7 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 			/***************/
 			/* MAKE QUIT   */
 			/***************/
-			
+
 	gNewObjectDefinition.type = INFOBAR_ObjType_Quit;
 	gNewObjectDefinition.coord.y = -3.0;
 	quit = MakeNewDisplayGroupObject(&gNewObjectDefinition);
@@ -402,13 +402,13 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 			/*************/
 			/* MAIN LOOP */
 			/*************/
-			
+
 	do
 	{
-		QD3D_CalcFramesPerSecond();					// calc frame rate				
-		
+		QD3D_CalcFramesPerSecond();					// calc frame rate
+
 				/* SEE IF CHANGE SELECT */
-				
+
 		UpdateInput();
 		if (GetNewNeedState(kNeed_UIUp) && (selected > 0))
 		{
@@ -427,9 +427,9 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 			selected = 0;
 			break;
 		}
-	
+
 				/* FLUCTUATE SELECTED */
-						
+
 		fluc += gFramesPerSecondFrac * 8;
 		if (selected == 0)
 		{
@@ -449,15 +449,15 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 	while (!GetNewNeedState(kNeed_UIConfirm));					// see if select
 
 			/* CLEANUP */
-			
+
 	DeleteObject(quit);
 	DeleteObject(resume);
-	
+
 	if (toggleMusic)
 		ToggleMusic();										// restart music
 
 	Pomme_PauseAllChannels(false);						// Source port addition: unpause looping channels
-	
+
 	if (selected == 1)									// see if want out
 	{
 		gGameOverFlag = true;
@@ -476,16 +476,16 @@ short	n;
 	if (n >= 0)
 	{
 			/* ANGLE TO CURRENT ACTIVE TIME PORTAL */
-			
+
 		x = gPlayerObj->Coord.x;
 		z = gPlayerObj->Coord.z;
-		
+
 		rot = CalcYAngleFromPointToPoint(x,z, gTimePortalList[n].coord.x,
 										gTimePortalList[n].coord.y);	// calc angle directly at target
 		rot -= gPlayerObj->Rot.y;
 		theNode->Rot.y = rot;
 		theNode->StatusBits &= ~STATUS_BIT_HIDDEN;
-		
+
 		UpdateInfobarIcon(theNode);
 	}
 	else
@@ -493,7 +493,7 @@ short	n;
 		theNode->StatusBits |= STATUS_BIT_HIDDEN;				// make invisible
 	}
 
-	
+
 }
 
 
@@ -533,7 +533,7 @@ static TQ3Point3D				points[4] = { { -GPS_DISPLAY_SIZE,  GPS_DISPLAY_SIZE, 0 },
 
 	if (gGPSFullImage)
 	{
-		DisposeGWorld(gGPSFullImage);			
+		DisposeGWorld(gGPSFullImage);
 		gGPSFullImage = nil;
 	}
 	if (gGPSGWorld)
@@ -551,7 +551,7 @@ static TQ3Point3D				points[4] = { { -GPS_DISPLAY_SIZE,  GPS_DISPLAY_SIZE, 0 },
 
 
 			/* DRAW FULL-SIZE IMAGE INTO GWORLD */
-			
+
 	myErr = FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":Images:Map.tga", &spec);
 	GAME_ASSERT(!myErr);
 
@@ -563,8 +563,8 @@ static TQ3Point3D				points[4] = { { -GPS_DISPLAY_SIZE,  GPS_DISPLAY_SIZE, 0 },
 	GAME_ASSERT(!myErr);
 
 
-	GetGWorld(&oldGW, &oldGD);								
-	SetGWorld(gGPSFullImage, nil);	
+	GetGWorld(&oldGW, &oldGD);
+	SetGWorld(gGPSFullImage, nil);
 	DrawPicture(pict,&gGPSFullImage->portRect);								// draw PICT into GWorld
 	SetGWorld (oldGW, oldGD);
 	ReleaseResource((Handle)pict);											// free the PICT rez
@@ -576,7 +576,7 @@ static TQ3Point3D				points[4] = { { -GPS_DISPLAY_SIZE,  GPS_DISPLAY_SIZE, 0 },
 	myErr = NewGWorld(&gGPSGWorld, 16, &r, 0, 0, 0L);						// make gworld
 	GAME_ASSERT(!myErr);
 
-	SetGWorld(gGPSGWorld, nil);	
+	SetGWorld(gGPSGWorld, nil);
 	ForeColor(blackColor);
 	FrameRect(&r);
 	SetGWorld (oldGW, oldGD);
@@ -660,30 +660,30 @@ Boolean					forceUpdate = false;
 
 
 		/* SEE IF NEED TO UPDATE POSITION */
-		
+
 	x = gMyCoord.x * .005f;
 	y = gMyCoord.z * .005f;
-	
+
 	if ((x != gOldGPSCoordX) || (y != gOldGPSCoordY) || forceUpdate)
 	{
 		long	w,h;
 
 				/* COPY VISIBLE SECTION OF GWORLD */
-				
+
 		dRect = gGPSGWorld->portRect;									// get dest rect
 		dRect.left++;	dRect.right--;
 		dRect.top++;	dRect.bottom--;
 		w = dRect.right - dRect.left;
 		h = dRect.bottom - dRect.top;
-					
+
 		sRect.left = (gMyCoord.x * TERRAIN_POLYGON_SIZE_Frac) - (GPS_MAP_SIZE/2);	// get src rect
 		sRect.top = (gMyCoord.z * TERRAIN_POLYGON_SIZE_Frac) - (GPS_MAP_SIZE/2);
 		sRect.right = sRect.left + w;
 		sRect.bottom = sRect.top + h;
-		
-			
+
+
 				/* CHECK EDGE CLIP */
-				
+
 		left = right = top = bottom = 0;					// assume no edge clipping
 
 		if (sRect.left < 0)
@@ -713,41 +713,41 @@ Boolean					forceUpdate = false;
 
 
 				/* DRAW IT */
-				
+
 		DumpGWorldToGWorld(gGPSFullImage, gGPSGWorld, &sRect, &dRect);
 
 
 				/* ERASE EDGES */
 
-		GetGWorld(&oldGW, &oldGD);								
-		SetGWorld(gGPSGWorld, nil);	
-				
+		GetGWorld(&oldGW, &oldGD);
+		SetGWorld(gGPSGWorld, nil);
+
 		BackColor(blackColor);
 		if (left > 0)
 		{
 			SetRect(&dRect,1,1,left+1,gGPSGWorld->portRect.bottom-1);
-			EraseRect(&dRect);		
+			EraseRect(&dRect);
 		}
 		if (right > 0)
 		{
 			SetRect(&dRect,gGPSGWorld->portRect.right-1-right,1,gGPSGWorld->portRect.right-1,gGPSGWorld->portRect.bottom-1);
-			EraseRect(&dRect);		
+			EraseRect(&dRect);
 		}
 		if (top > 0)
 		{
 			SetRect(&dRect,1,1,gGPSGWorld->portRect.right-1,top+1);
-			EraseRect(&dRect);		
+			EraseRect(&dRect);
 		}
 		if (bottom > 0)
 		{
 			SetRect(&dRect,1,gGPSGWorld->portRect.bottom-1-bottom,gGPSGWorld->portRect.right-1,gGPSGWorld->portRect.bottom-1);
-			EraseRect(&dRect);		
+			EraseRect(&dRect);
 		}
 
 
 
 				/* DRAW CROSSHAIRS */
-								
+
 		ForeColor(yellowColor);
 		MoveTo(GPS_MAP_SIZE/2, 0);
 		LineTo(GPS_MAP_SIZE/2, GPS_MAP_SIZE);
@@ -779,12 +779,12 @@ Boolean					forceUpdate = false;
 		gOldGPSCoordX = x;
 		gOldGPSCoordY = y;
 	}
-	
-	
+
+
 			/* UPDATE IT IN THE INFOBAR */
-			
+
 	theNode->Rot.z = -gPlayerObj->Rot.y;
-						
+
 	UpdateInfobarIcon(theNode);
 }
 
@@ -794,26 +794,26 @@ Boolean					forceUpdate = false;
 void DecAsteroidTimer(void)
 {
 			/* DEC TIMER & SEE IF DONE */
-			
+
 	if (gTimeRemaining <= 0.0f)								// see if done
 	{
-		gGameOverFlag = true;	
+		gGameOverFlag = true;
 	}
-			
+
 	if ((gTimeRemaining -= gFramesPerSecondFrac) <= 0.0f)	// dec timer
 		gTimeRemaining = 0;
 
-	
+
 	if (fabs(gOldTime - gTimeRemaining) >= 1.0f)
 	{
 		gInfobarUpdateBits |= UPDATE_IMPACTTIME;
 		gOldTime = gTimeRemaining;
 
 				/* DO 30 SECOND WARNING BEEP */
-				
+
 		if (gTimeRemaining < 30.0f)
 			PlayEffect_Parms(EFFECT_ALARM,FULL_CHANNEL_VOLUME,kMiddleC-5);
-	}	
+	}
 }
 
 
@@ -826,4 +826,3 @@ void GetHealth(float amount)
 		gMyHealth = 1.0f;
 	gInfobarUpdateBits |= UPDATE_HEALTH;
 }
-

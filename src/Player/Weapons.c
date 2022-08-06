@@ -97,16 +97,16 @@ short	i;
 	gPossibleAttackModes[ATTACK_MODE_BLASTER] 	= true;
 	gWeaponInventory[ATTACK_MODE_BLASTER] 		= 50;
 
-	gPossibleAttackModes[ATTACK_MODE_HEATSEEK] 	= false;
+	gPossibleAttackModes[ATTACK_MODE_HEATSEEK] 	= true;
 	gWeaponInventory[ATTACK_MODE_HEATSEEK] 		= 10;
 
-	gPossibleAttackModes[ATTACK_MODE_SONICSCREAM] = false;
+	gPossibleAttackModes[ATTACK_MODE_SONICSCREAM] = true;
 	gWeaponInventory[ATTACK_MODE_SONICSCREAM] 	= 10;
 
-	gPossibleAttackModes[ATTACK_MODE_TRIBLAST] = false;
+	gPossibleAttackModes[ATTACK_MODE_TRIBLAST] = true;
 	gWeaponInventory[ATTACK_MODE_TRIBLAST] 		= 25;
 
-	gPossibleAttackModes[ATTACK_MODE_NUKE] = false;
+	gPossibleAttackModes[ATTACK_MODE_NUKE] = true;
 	gWeaponInventory[ATTACK_MODE_NUKE] 		= 1;
 
 	gInfobarUpdateBits |= UPDATE_WEAPONICON;
@@ -147,7 +147,7 @@ static const short quans[] =
 {
 	25,					// blaster
 	10,					// heat seek
-	25,					// sonic scream
+	15,					// sonic scream
 	30,					// triblast
 	1,					// Nuke
 	25,
@@ -407,7 +407,11 @@ float	r,fps;
 				/* UPDATE INFOBAR */
 
 		if (--gWeaponInventory[gCurrentAttackMode] == 0)				// dec inventory & if run out, select next weapon
+		{
+			gPossibleAttackModes[gCurrentAttackMode] = false;
 			NextAttackMode();
+		}
+
 		gInfobarUpdateBits |= UPDATE_WEAPONICON;						// tell system to update this at end of frame
 
 

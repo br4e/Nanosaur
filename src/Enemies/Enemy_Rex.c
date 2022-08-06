@@ -41,8 +41,8 @@ static void  MoveRex_Pounce(ObjNode *theNode);
 #define	MAX_WALK_SPEED		200.0f
 
 
-#define	REX_HEALTH		1.0f		
-#define	REX_DAMAGE		0.04f
+#define	REX_HEALTH		2.0f
+#define	REX_DAMAGE		0.08f
 
 #define	REX_SCALE		1.2f
 
@@ -78,33 +78,33 @@ ObjNode	*newObj;
 	if (gNumEnemies >= MAX_ENEMIES)					// keep from getting absurd
 		return(false);
 
-	if (!(itemPtr->parm[3] & 1))				// see if always add 
+	if (!(itemPtr->parm[3] & 1))				// see if always add
 	{
 		if (gNumEnemyOfKind[ENEMY_KIND_REX] >= MAX_REX)
 			return(false);
 	}
 				/* MAKE DEFAULT SKELETON ENEMY */
-				
+
 	newObj = MakeEnemySkeleton(SKELETON_TYPE_REX,x,z);
 	if (newObj == nil)
 		return(false);
 	newObj->TerrainItemPtr = itemPtr;
 
 	SetSkeletonAnim(newObj->Skeleton, REX_ANIM_WALK);
-	
+
 
 				/* SET BETTER INFO */
-			
-	newObj->Coord.y -= FOOT_OFFSET;			
+
+	newObj->Coord.y -= FOOT_OFFSET;
 	newObj->MoveCall = MoveRex;							// set move call
 	newObj->Health = REX_HEALTH;
 	newObj->Damage = REX_DAMAGE;
 	newObj->Kind = ENEMY_KIND_REX;
 	newObj->Scale.x = newObj->Scale.y = newObj->Scale.z = REX_SCALE;	// set scale
 	newObj->Radius *= REX_SCALE;
-	
+
 				/* SET COLLISION INFO */
-				
+
 	SetObjectCollisionBounds(newObj, 120,FOOT_OFFSET,-120,120,120,-120);
 
 
@@ -113,7 +113,7 @@ ObjNode	*newObj;
 
 
 				/* MAKE SHADOW */
-				
+
 	AttachShadowToObject(newObj, 2.6, 2.6*2.5);
 
 	gNumEnemies++;
@@ -142,7 +142,7 @@ static	void(*myMoveTable[])(ObjNode *) =
 	}
 
 	GetObjectInfo(theNode);
-	
+
 	myMoveTable[theNode->Skeleton->AnimNum](theNode);
 }
 
@@ -153,12 +153,12 @@ static void  MoveRex_Standing(ObjNode *theNode)
 		MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_WALK,5);
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
-	UpdateEnemy(theNode);		
-	
+	UpdateEnemy(theNode);
+
 }
 
 
@@ -171,11 +171,11 @@ float	r,speed,dist,fps,aim;
 	fps = gFramesPerSecondFrac;
 
 			/* MOVE TOWARD PLAYER */
-			
-	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, REX_TURN_SPEED, true);			
+
+	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, REX_TURN_SPEED, true);
 
 	r = theNode->Rot.y;
-	speed = theNode->Speed = MAX_WALK_SPEED;	
+	speed = theNode->Speed = MAX_WALK_SPEED;
 	gDelta.x = -sin(r) * speed;
 	gDelta.z = -cos(r) * speed;
 	gDelta.y -= GRAVITY_CONSTANT*fps;				// add gravity
@@ -183,13 +183,13 @@ float	r,speed,dist,fps,aim;
 	MoveEnemy(theNode, theNode->BottomOff);
 
 				/* SEE IF RETURN TO STANDING */
-				
+
 	dist = CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
 	if (dist > (REX_MAX_ATTACK_RANGE*1.3f))
 		MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_STAND,3);
 
 			/* SEE IF CLOSE ENOUGH TO POUNCE */
-	else	
+	else
 	if (dist < REX_MIN_ATTACK_RANGE)
 	{
 		if (aim < 0.5f)									// must be aimed mostly at me
@@ -209,10 +209,10 @@ float	r,speed,dist,fps,aim;
 	{
 		CalcNewTargetOffsets(theNode,REX_TARGET_SCALE);
 		theNode->TargetChangeTimer	= 0;
-		
-		
+
+
 				/* MAKE ROAR */
-				
+
 		if ((MyRandomLong()&3) < 2)								// see if roar
 		{
 			long volume = FULL_CHANNEL_VOLUME - (long)(dist * .15f);
@@ -221,18 +221,18 @@ float	r,speed,dist,fps,aim;
 		}
 
 	}
-	
+
 		/* UPDATE ANIM SPEED */
 
 	theNode->Skeleton->AnimSpeed = speed * .005f;
-	
+
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
-	
-	UpdateEnemy(theNode);		
+
+	UpdateEnemy(theNode);
 }
 
 
@@ -249,18 +249,18 @@ Boolean	onGround;
 	fps = gFramesPerSecondFrac;
 
 			/* MOVE HIM */
-			
+
 	r = theNode->Rot.y;
-	speed = theNode->Speed;	
+	speed = theNode->Speed;
 	gDelta.x = -sin(r) * speed;
 	gDelta.z = -cos(r) * speed;
 	gDelta.y -= GRAVITY_CONSTANT*fps;										// add gravity
 
 	onGround = MoveEnemy(theNode, theNode->BottomOff);
-	
+
 
 				/* SEE IF RETURN TO STANDING */
-				
+
 	if (theNode->IsPouncingFlag && onGround)								// see if landed on something solid
 	{
 		theNode->IsPouncingFlag = false;
@@ -273,7 +273,7 @@ Boolean	onGround;
 		PlayEffect_Parms(EFFECT_FOOTSTEP,FULL_CHANNEL_VOLUME,kMiddleC-5);	// play sound
 	}
 				/* SEE IF DONE WITH LANDING */
-				
+
 	else
 	if (theNode->Skeleton->AnimNum)
 	{
@@ -282,11 +282,11 @@ Boolean	onGround;
 	}
 
 			/* SEE IF START POUNCE NOW */
-			
+
 	if (theNode->PounceFlag)
 	{
 		dist = CalcQuickDistance(gCoord.x, gCoord.z, gMyCoord.x, gMyCoord.z);
-		theNode->PounceFlag = false;	
+		theNode->PounceFlag = false;
 		theNode->IsPouncingFlag = true;
 		theNode->Speed = (POUNCE_SPEED * dist) + 50;
 		gDelta.y = POUNCE_YACC;
@@ -295,16 +295,12 @@ Boolean	onGround;
 	}
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
 
 
-	
-	UpdateEnemy(theNode);		
+
+	UpdateEnemy(theNode);
 }
-
-
-
-

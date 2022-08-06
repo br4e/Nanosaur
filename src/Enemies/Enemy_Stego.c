@@ -26,15 +26,15 @@ static void MoveStego_Standing(ObjNode *theNode);
 /****************************/
 
 #define	STEGO_ATTACK_RANGE	700
-#define STEGO_TURN_SPEED	.45
-#define	MAX_WALK_SPEED		80
+#define STEGO_TURN_SPEED	1
+#define	MAX_WALK_SPEED		100
 
 #define	STEGO_TARGET_SCALE	350
 
 
 
-#define	STEGO_HEALTH		5.0		
-#define	STEGO_DAMAGE		.2
+#define	STEGO_HEALTH		6.0
+#define	STEGO_DAMAGE		.3
 
 #define	STEGO_SCALE			1.4
 
@@ -67,14 +67,14 @@ ObjNode	*newObj;
 	if (gNumEnemies >= MAX_ENEMIES)				// keep from getting absurd
 		return(false);
 
-	if (!(itemPtr->parm[3] & 1))				// see if always add 
+	if (!(itemPtr->parm[3] & 1))				// see if always add
 	{
 		if (gNumEnemyOfKind[ENEMY_KIND_STEGO] >= MAX_STEGO)
 			return(false);
 	}
 
 				/* MAKE DEFAULT SKELETON ENEMY */
-				
+
 	newObj = MakeEnemySkeleton(SKELETON_TYPE_STEGO,x,z);
 	if (newObj == nil)
 		return(false);
@@ -82,11 +82,11 @@ ObjNode	*newObj;
 	newObj->TerrainItemPtr = itemPtr;
 
 	SetSkeletonAnim(newObj->Skeleton, STEGO_ANIM_STAND);
-	
+
 	newObj->Coord.y -= FOOT_OFFSET;							// adjust y
-	
+
 				/* SET BETTER INFO */
-						
+
 	newObj->MoveCall = MoveStego;							// set move call
 
 	newObj->Health = STEGO_HEALTH;
@@ -95,19 +95,19 @@ ObjNode	*newObj;
 
 	newObj->Scale.x = newObj->Scale.y = newObj->Scale.z = STEGO_SCALE;	// set scale
 	newObj->Radius *= STEGO_SCALE;
-	
+
 	newObj->Rot.y = RandomFloat()*PI2;						// random rotation
-	
-	
+
+
 				/* SET COLLISION INFO */
-				
+
 	SetObjectCollisionBounds(newObj, 90,FOOT_OFFSET,-130,130,130,-130);
 	CalcNewTargetOffsets(newObj,STEGO_TARGET_SCALE);
 	newObj->TargetChangeTimer = 0;
 
 
 				/* MAKE SHADOW */
-				
+
 	AttachShadowToObject(newObj, 5, 5*2);
 
 
@@ -149,13 +149,13 @@ static void  MoveStego_Standing(ObjNode *theNode)
 
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
 
-	UpdateEnemy(theNode);		
-	
+	UpdateEnemy(theNode);
+
 }
 
 
@@ -168,11 +168,11 @@ float	r;
 	theNode->Skeleton->AnimSpeed = .5;								// tweak speed to avoid moonwalking
 
 			/* MOVE TOWARD PLAYER */
-			
-	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, STEGO_TURN_SPEED, true);			
+
+	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, STEGO_TURN_SPEED, true);
 
 	r = theNode->Rot.y;
-	theNode->Speed = MAX_WALK_SPEED;	
+	theNode->Speed = MAX_WALK_SPEED;
 	gDelta.x = -sin(r) * MAX_WALK_SPEED;
 	gDelta.z = -cos(r) * MAX_WALK_SPEED;
 	gDelta.y -= GRAVITY_CONSTANT*gFramesPerSecondFrac;				// add gravity
@@ -190,20 +190,11 @@ float	r;
 		CalcNewTargetOffsets(theNode,STEGO_TARGET_SCALE);
 		theNode->TargetChangeTimer	= 0;
 	}
-	
+
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
-	
-	UpdateEnemy(theNode);		
+
+	UpdateEnemy(theNode);
 }
-
-
-
-
-
-
-
-
-

@@ -51,7 +51,7 @@ extern const float	NUKE_RATE;
 #define	BLASTER_SPEED		1100
 #define	BLASTER_DAMAGE		.4
 
-#define	HEATSEEK_SPEED		700
+#define	HEATSEEK_SPEED		900
 #define	HEATSEEK_DAMAGE		.8
 
 #define	TRIBLAST_SPEED		1100
@@ -88,9 +88,9 @@ short	i;
 	gCurrentAttackMode = ATTACK_MODE_BLASTER;
 	gAutoFireCounter = 0;
 	gSonicScreamWave = 0;
-	
+
 			/* INIT ATTACK MODE POWERUPS */
-			
+
 	for (i=0; i < NUM_ATTACK_MODES; i++)
 		gPossibleAttackModes[i] = false;
 
@@ -98,17 +98,17 @@ short	i;
 	gWeaponInventory[ATTACK_MODE_BLASTER] 		= 50;
 
 	gPossibleAttackModes[ATTACK_MODE_HEATSEEK] 	= false;
-	gWeaponInventory[ATTACK_MODE_HEATSEEK] 		= 0;	
+	gWeaponInventory[ATTACK_MODE_HEATSEEK] 		= 10;
 
 	gPossibleAttackModes[ATTACK_MODE_SONICSCREAM] = false;
-	gWeaponInventory[ATTACK_MODE_SONICSCREAM] 	= 0;	
+	gWeaponInventory[ATTACK_MODE_SONICSCREAM] 	= 10;
 
 	gPossibleAttackModes[ATTACK_MODE_TRIBLAST] = false;
-	gWeaponInventory[ATTACK_MODE_TRIBLAST] 		= 0;	
+	gWeaponInventory[ATTACK_MODE_TRIBLAST] 		= 25;
 
 	gPossibleAttackModes[ATTACK_MODE_NUKE] = false;
-	gWeaponInventory[ATTACK_MODE_NUKE] 		= 0;	
-	
+	gWeaponInventory[ATTACK_MODE_NUKE] 		= 1;
+
 	gInfobarUpdateBits |= UPDATE_WEAPONICON;
 }
 
@@ -124,17 +124,17 @@ void GetCheatWeapons(void)
 	gWeaponInventory[ATTACK_MODE_BLASTER] 		= 999;
 
 	gPossibleAttackModes[ATTACK_MODE_HEATSEEK] 	= true;
-	gWeaponInventory[ATTACK_MODE_HEATSEEK] 		= 999;	
+	gWeaponInventory[ATTACK_MODE_HEATSEEK] 		= 999;
 
 	gPossibleAttackModes[ATTACK_MODE_SONICSCREAM] = true;
-	gWeaponInventory[ATTACK_MODE_SONICSCREAM] 	= 999;	
+	gWeaponInventory[ATTACK_MODE_SONICSCREAM] 	= 999;
 
 	gPossibleAttackModes[ATTACK_MODE_TRIBLAST] = true;
-	gWeaponInventory[ATTACK_MODE_TRIBLAST] 		= 999;	
+	gWeaponInventory[ATTACK_MODE_TRIBLAST] 		= 999;
 
 	gPossibleAttackModes[ATTACK_MODE_NUKE] = true;
-	gWeaponInventory[ATTACK_MODE_NUKE] 		= 999;	
-	
+	gWeaponInventory[ATTACK_MODE_NUKE] 		= 999;
+
 	gInfobarUpdateBits |= UPDATE_WEAPONICON;
 }
 
@@ -147,7 +147,7 @@ static const short quans[] =
 {
 	25,					// blaster
 	10,					// heat seek
-	50,					// sonic scream
+	25,					// sonic scream
 	30,					// triblast
 	1,					// Nuke
 	25,
@@ -155,13 +155,13 @@ static const short quans[] =
 	25
 };
 		/* SEE IF USE DEFAULT QUANTITY */
-		
+
 	if (quantity == 0)
 		quantity = quans[kind];
-	
-	
+
+
 			/* ADD TO INVENTORY */
-			
+
 	gPossibleAttackModes[kind] = true;					// we now have this weapon
 	gWeaponInventory[kind] += quantity;					// inc inventory count
 	if (gWeaponInventory[kind] > 999)
@@ -179,21 +179,21 @@ void CheckIfMeAttack(ObjNode *theNode)
 			/*****************/
 			/* SEE IF ATTACK */
 			/*****************/
-		
+
 	if ((gMyControlBits & KEYCONTROL_ATTACK) && (gWeaponInventory[gCurrentAttackMode] > 0))
-	{	
+	{
 			/* SEE WHICH ATTACK */
-			
+
 		switch(gCurrentAttackMode)
 		{
 			case	ATTACK_MODE_BLASTER:
 					ShootBlaster(theNode);
-					break;						
+					break;
 
 			case	ATTACK_MODE_HEATSEEK:
 					ShootHeatSeek(theNode);
 					break;
-					
+
 			case	ATTACK_MODE_SONICSCREAM:
 					ShootSonicScream(theNode);
 					break;
@@ -201,7 +201,7 @@ void CheckIfMeAttack(ObjNode *theNode)
 			case	ATTACK_MODE_NUKE:
 					ShootNuke(theNode);
 					break;
-										
+
 			case	ATTACK_MODE_TRIBLAST:
 					ShootTriBlast(theNode);
 					break;
@@ -209,9 +209,9 @@ void CheckIfMeAttack(ObjNode *theNode)
 	}
 	else
 		gAutoFireCounter = 1.0;									// not shooting now, so ready to shoot immediately
-}	
-	
-	
+}
+
+
 /************************** DO BULLET COLLISION DETECT ************************/
 //
 // OUTPUT: true = hit something
@@ -225,35 +225,35 @@ ObjNode	*hitObj;
 			/*************************/
 			/* CREATE COLLISION LIST */
 			/*************************/
-			
+
 		/* FIRST DO SIMPLE POINT COLLISION */
-				
+
 	numCollisions = DoSimplePointCollision(&gCoord, CTYPE_ENEMY|CTYPE_PLAYER|CTYPE_MISC|CTYPE_CRYSTAL);
 	if (numCollisions == 0)
 	{
-		DoTriangleCollision(theBullet, CTYPE_MISC);				
+		DoTriangleCollision(theBullet, CTYPE_MISC);
 		if (gNumCollisions == 0)
 			return(false);
-			
+
 	}
 
 
 			/* SEE WHAT WE HIT */
-			
+
 	for (i = 0; i < numCollisions; i++)
 	{
 		hitObj = gCollisionList[i].objectPtr;							// get objnode of collision
 		if (hitObj)
 		{
 				/* BULLET HIT AN ENEMY */
-				
+
 			if (hitObj->CType & CTYPE_ENEMY)
 			{
 				EnemyGotHurt(hitObj, theBullet, theBullet->Damage);		// hurt the enemy
 			}
-			
+
 				/* BULLET HIT A CRYSTAL */
-				
+
 			else
 			if (hitObj->CType & CTYPE_CRYSTAL)
 			{
@@ -262,14 +262,14 @@ ObjNode	*hitObj;
 			break;
 		}
 	}
-	
-	
+
+
 			/* EXPLODE THE BULLET */
-			
+
 	ExplodeBullet(theBullet);
 	return(true);
 }
-	
+
 /****************** EXPLODE BULLET *********************/
 
 static void ExplodeBullet(ObjNode *theNode)
@@ -278,15 +278,15 @@ float	d;
 long	volume;
 
 			/* SPECIAL IF NUKE */
-			
+
 	if (theNode->Kind == ATTACK_MODE_NUKE)
 	{
 		DetonateNuke(theNode);
 		return;
 	}
-	
+
 			/* SPECIAL IF SONIC SCREAM */
-			
+
 	else
 	if (theNode->Kind == ATTACK_MODE_SONICSCREAM)
 	{
@@ -296,7 +296,7 @@ long	volume;
 
 
 			/* GENERIC */
-			
+
 	DeleteObject(theNode);
 	MakeExplosion(&theNode->Coord);
 
@@ -305,7 +305,7 @@ long	volume;
 	if (volume > 0)
 		PlayEffect_Parms(EFFECT_EXPLODE,volume,kMiddleC);							// play sound
 
-}	
+}
 
 
 /********************** MAKE EXPLOSION *****************************/
@@ -315,10 +315,10 @@ static void MakeExplosion(TQ3Point3D *coord)
 ObjNode *newObj;
 
 	gNewObjectDefinition.coord = *coord;
-	gNewObjectDefinition.group = GLOBAL_MGroupNum_Explosion;	
-	gNewObjectDefinition.type = GLOBAL_MObjType_Explosion;	
+	gNewObjectDefinition.group = GLOBAL_MGroupNum_Explosion;
+	gNewObjectDefinition.type = GLOBAL_MObjType_Explosion;
 	gNewObjectDefinition.flags = 0;
-	gNewObjectDefinition.slot = SLOT_OF_DUMB;	
+	gNewObjectDefinition.slot = SLOT_OF_DUMB;
 	gNewObjectDefinition.moveCall = MoveExplosion;
 	gNewObjectDefinition.rot = 0;
 	gNewObjectDefinition.scale = 1;
@@ -327,7 +327,7 @@ ObjNode *newObj;
 	{
 		newObj->Health = .9;
 		MakeObjectTransparent(newObj, newObj->Health);					// make transparent
-	}	
+	}
 }
 
 
@@ -343,15 +343,15 @@ float	fps = gFramesPerSecondFrac;
 		DeleteObject(theNode);
 		return;
 	}
-	
+
 	MakeObjectTransparent(theNode, theNode->Health);
 	theNode->Scale.x = theNode->Scale.y = theNode->Scale.z += fps * 20;
 	UpdateObjectTransforms(theNode);
 }
 
 
-	
-	
+
+
 /****************** SHOOT SONIC SCREAM ***********************/
 
 static void ShootSonicScream(ObjNode *theNode)
@@ -367,15 +367,15 @@ float	r,fps;
 	if (gAutoFireCounter >= 1.0)
 	{
 		gAutoFireCounter -= 1.0;
-	
+
 						/* CALC START COORD */
-						
+
 		FindCoordOnJoint(theNode, MYGUY_LIMB_GUN, &gGunTipOffset, &gNewObjectDefinition.coord);
-	
+
 					/* MAKE MODEL */
-					
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_SonicScream;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_SonicScream;	
+
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_SonicScream;
+		gNewObjectDefinition.type = GLOBAL_MObjType_SonicScream;
 		gNewObjectDefinition.flags = STATUS_BIT_KEEPBACKFACES | STATUS_BIT_NULLSHADER;
 		gNewObjectDefinition.slot = PLAYER_SLOT-1;						// dont update till next loop
 		gNewObjectDefinition.moveCall = MoveSonicScream;
@@ -387,25 +387,25 @@ float	r,fps;
 
 		gSonicScreamWave += fps*25;
 
-		newObj->Kind = ATTACK_MODE_SONICSCREAM; 
+		newObj->Kind = ATTACK_MODE_SONICSCREAM;
 
 		newObj->Health = .7;											// transparency value
-		
+
 		newObj->Delta.x = (-sin(r) * SONIC_SCREAM_SPEED) + gDelta.x;	// calc deltas
 		newObj->Delta.z = (-cos(r) * SONIC_SCREAM_SPEED) + gDelta.z;
 
 		MakeObjectTransparent(newObj, newObj->Health);
-		
-		
+
+
 				/* MAKE COLLISION BOX */
-		
+
 		newObj->CType = CTYPE_MYBULLET;									// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
 		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks
-		
+
 		newObj->Damage = SONIC_SCREAM_DAMAGE;
 
 				/* UPDATE INFOBAR */
-				
+
 		if (--gWeaponInventory[gCurrentAttackMode] == 0)				// dec inventory & if run out, select next weapon
 			NextAttackMode();
 		gInfobarUpdateBits |= UPDATE_WEAPONICON;						// tell system to update this at end of frame
@@ -430,14 +430,14 @@ float	x,y,z;
 		DeleteObject(theNode);
 		return;
 	}
-	
+
 	GetObjectInfo(theNode);
-	
+
 	MakeObjectTransparent(theNode, theNode->Health);
 
 
 			/* MOVE IT */
-			
+
 	theNode->Scale.x += fps * 1.0;
 	theNode->Scale.y += fps * 1.0;
 	theNode->Scale.z += fps * 1.0;
@@ -448,7 +448,7 @@ float	x,y,z;
 
 
 		/* SEE IF HIT TERRAIN */
-		
+
 	if (y <= GetTerrainHeightAtCoord_Planar(x,z))
 	{
 		ExplodeBullet(theNode);
@@ -456,7 +456,7 @@ float	x,y,z;
 	}
 
 			/* DO BULLET COLLISION */
-			
+
 	if (DoBulletCollisionDetect(theNode))
 		return;
 
@@ -474,20 +474,20 @@ static void ShootBlaster(ObjNode *theNode)
 ObjNode	*newObj;
 float	r;
 
-	gAutoFireCounter += gFramesPerSecondFrac * BLASTER_RATE;			// check auto fire timer	
+	gAutoFireCounter += gFramesPerSecondFrac * BLASTER_RATE;			// check auto fire timer
 	if (gAutoFireCounter >= 1.0)
 	{
 		gAutoFireCounter -= 1.0;
-	
+
 						/* CALC START COORD */
-						
+
 		FindCoordOnJoint(theNode, MYGUY_LIMB_GUN, &gGunTipOffset, &gNewObjectDefinition.coord);
-	
-	
+
+
 					/* MAKE MODEL */
-					
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_Blaster;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_Blaster;	
+
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_Blaster;
+		gNewObjectDefinition.type = GLOBAL_MObjType_Blaster;
 		gNewObjectDefinition.flags = 0;
 		gNewObjectDefinition.slot = PLAYER_SLOT-1;						// dont update till next loop
 		gNewObjectDefinition.moveCall = MoveBlaster;
@@ -497,22 +497,22 @@ float	r;
 		if (newObj == nil)
 			return;
 
-		newObj->Health = 1.0;											
-		
-		newObj->Kind = ATTACK_MODE_BLASTER; 
+		newObj->Health = 1.0;
+
+		newObj->Kind = ATTACK_MODE_BLASTER;
 
 		newObj->Delta.x = (-sin(r) * BLASTER_SPEED) + gDelta.x;			// calc deltas
 		newObj->Delta.z = (-cos(r) * BLASTER_SPEED) + gDelta.z;
-				
+
 		newObj->CType = CTYPE_MYBULLET;									// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
 		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks
-		
+
 		newObj->Damage = BLASTER_DAMAGE;
-				
+
 		PlayEffect(EFFECT_BLASTER);										// play sound
-		
+
 				/* UPDATE INFOBAR */
-				
+
 		if (--gWeaponInventory[gCurrentAttackMode] == 0)				// dec inventory & if run out, select next weapon
 		{
 			gPossibleAttackModes[gCurrentAttackMode] = false;
@@ -535,23 +535,23 @@ float	x,y,z,fps;
 	fps = gFramesPerSecondFrac;
 
 			/* DECAY IT */
-			
+
 	theNode->Health -= .9 * fps;
 	if (theNode->Health < 0)
 	{
 		DeleteObject(theNode);
 		return;
 	}
-	
+
 			/* MOVE IT */
-			
+
 	x = gCoord.x += gDelta.x * fps;
 	y = gCoord.y += gDelta.y * fps;
 	z = gCoord.z += gDelta.z * fps;
 
 
 		/* SEE IF HIT TERRAIN */
-		
+
 	if (y <= GetTerrainHeightAtCoord_Planar(x,z))
 	{
 		ExplodeBullet(theNode);
@@ -559,7 +559,7 @@ float	x,y,z,fps;
 	}
 
 			/* DO BULLET COLLISION */
-			
+
 	if (DoBulletCollisionDetect(theNode))
 		return;
 
@@ -584,16 +584,16 @@ float	r;
 	if (gAutoFireCounter >= 1.0)
 	{
 		gAutoFireCounter -= 1.0;
-	
+
 						/* CALC START COORD */
-						
+
 		FindCoordOnJoint(theNode, MYGUY_LIMB_GUN, &gGunTipOffset, &gNewObjectDefinition.coord);
-	
-	
+
+
 					/* MAKE MODEL */
-					
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_HeatSeek;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_HeatSeek;	
+
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_HeatSeek;
+		gNewObjectDefinition.type = GLOBAL_MObjType_HeatSeek;
 		gNewObjectDefinition.flags = 0;
 		gNewObjectDefinition.slot = PLAYER_SLOT-1;					// dont update till next loop
 		gNewObjectDefinition.moveCall = MoveHeatSeek;
@@ -603,27 +603,27 @@ float	r;
 		if (newObj == nil)
 			return;
 
-		newObj->Health = 1.0;											
-		
-		newObj->Kind = ATTACK_MODE_HEATSEEK; 
+		newObj->Health = 1.0;
+
+		newObj->Kind = ATTACK_MODE_HEATSEEK;
 
 		newObj->Delta.x = (-sin(r) * HEATSEEK_SPEED) + gDelta.x;	// calc deltas
 		newObj->Delta.z = (-cos(r) * HEATSEEK_SPEED) + gDelta.z;
-		
-		
+
+
 				/* MAKE COLLISION BOX */
-		
+
 		newObj->CType = CTYPE_MYBULLET;								// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
 		newObj->CBits = CBITS_TOUCHABLE;							// .. which also means I don't need a collision box since bullets use point collision checks
-		
-		newObj->Damage = HEATSEEK_DAMAGE;		
+
+		newObj->Damage = HEATSEEK_DAMAGE;
 
 		newObj->SpecialF[0] = 0;									// init auto-target delay
 
 		PlayEffect(EFFECT_HEATSEEK);								// play sound
 
 				/* UPDATE INFOBAR */
-				
+
 		if (--gWeaponInventory[gCurrentAttackMode] == 0)			// dec inventory & if run out, select next weapon
 		{
 			gPossibleAttackModes[gCurrentAttackMode] = false;
@@ -649,85 +649,86 @@ short	num,i;
 
 			/* DECAY LIFE */
 
-	theNode->Health -= .5 * fps;
+	theNode->Health -= .25 * fps;
 	if (theNode->Health < 0)
 	{
 		DeleteObject(theNode);
 		return;
 	}
-	
+
 	GetObjectInfo(theNode);
-	
-	
+
+
 			/* FIND CLOSEST ENEMY & ACCEL TO IT */
 
-	theNode->SpecialF[0] += fps * 4;
+	theNode->SpecialF[0] += fps * 6;
 	enemyObj = FindClosestEnemy(&gCoord, &dist);								// get closest
 	if (enemyObj)
 	{
 		y = enemyObj->Coord.y + ((enemyObj->BottomOff + enemyObj->TopOff)>>1);	// calc center y of enemy as target y
 		gDelta.y += (y - gCoord.y) * fps;
-	
+
+
 		turnSp = theNode->SpecialF[0];											// calc turn speed
-		if (turnSp > 7)
-			turnSp = 7;
+		if (turnSp > 40)
+			turnSp = 40;
 		TurnObjectTowardTarget(theNode, enemyObj->Coord.x,						// rotate toward target
-							 enemyObj->Coord.z, turnSp, false);			
-	
+							 enemyObj->Coord.z, turnSp, false);
+
 		r = theNode->Rot.y;														// calc deltas based on aiming
 		gDelta.x = -sin(r) * HEATSEEK_SPEED;
-		gDelta.z = -cos(r) * HEATSEEK_SPEED;	
+		gDelta.z = -cos(r) * HEATSEEK_SPEED;
 	}
-		
-	
+
+
 			/* MOVE IT */
-			
+
 	x = gCoord.x += gDelta.x * fps;
 	y = gCoord.y += gDelta.y * fps;
 	z = gCoord.z += gDelta.z * fps;
 
 			/* CALC YAW/PITCH ROTATION */
-			
+
 	theNode->Rot.x = gDelta.y * .001;
 	if (theNode->Rot.x > PI/2)
 		theNode->Rot.x = PI/2;
 	else
 	if (theNode->Rot.x < -PI/2)
 		theNode->Rot.x = -PI/2;
-	
+
 
 		/* SEE IF HIT TERRAIN */
-		
+
 	if (y <= GetTerrainHeightAtCoord_Planar(x,z))
 	{
 		ExplodeBullet(theNode);
 		return;
 	}
-	
+
 
 			/* DO BULLET COLLISION */
-			
+
 	if (DoBulletCollisionDetect(theNode))
 		return;
-	
+
 
 			/* LEAVE TRAIL */
-	
+
 	num = (CalcQuickDistance(gCoord.x, gCoord.z, theNode->OldCoord.x, theNode->OldCoord.z) * (1.0/15.0)) + 1.0;
 	r = -1.0/(float)num;
 	xi = (gCoord.x - theNode->OldCoord.x) * r;
 	yi = (gCoord.y - theNode->OldCoord.y) * r;
 	zi = (gCoord.z - theNode->OldCoord.z) * r;
-	
+
 	for (i = 0; i <= num; i++)
-	{	
+	{
 		gNewObjectDefinition.coord.x = x;
 		gNewObjectDefinition.coord.y = y;
 		gNewObjectDefinition.coord.z = z;
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_HeatSeekEcho;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_HeatSeekEcho;	
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_HeatSeekEcho;
+		gNewObjectDefinition.type = GLOBAL_MObjType_HeatSeekEcho;
 		gNewObjectDefinition.flags = 0;
-		gNewObjectDefinition.slot = SLOT_OF_DUMB;	
+		gNewObjectDefinition.slot = SLOT_OF_DUMB;
 		gNewObjectDefinition.moveCall = MoveHeatSeekEcho;
 		gNewObjectDefinition.rot = 0;
 		gNewObjectDefinition.scale = .7 + RandomFloat()*.5;
@@ -736,11 +737,11 @@ short	num,i;
 		{
 			newObj->Health = .7 + RandomFloat()*.3;							// transparency value
 			MakeObjectTransparent(newObj, newObj->Health);					// make transparent
-		}	
-		
+		}
+
 		x += xi;
 		y += yi;
-		z += zi;	
+		z += zi;
 	};
 
 
@@ -758,7 +759,7 @@ static void MoveHeatSeekEcho(ObjNode *theNode)
 		DeleteObject(theNode);
 		return;
 	}
-	
+
 	MakeObjectTransparent(theNode, theNode->Health);
 }
 
@@ -774,23 +775,23 @@ static void ShootTriBlast(ObjNode *theNode)
 ObjNode	*newObj;
 float	r;
 
-	gAutoFireCounter += gFramesPerSecondFrac * TRIBLAST_RATE;			// check auto fire timer	
+	gAutoFireCounter += gFramesPerSecondFrac * TRIBLAST_RATE;			// check auto fire timer
 	if (gAutoFireCounter >= 1.0)
 	{
 		gAutoFireCounter -= 1.0;
-	
+
 						/* CALC START COORD */
-						
+
 		FindCoordOnJoint(theNode, MYGUY_LIMB_GUN, &gGunTipOffset, &gNewObjectDefinition.coord);
-	
+
 					/***************/
 					/* MAKE MODELS */
 					/***************/
-					
+
 					/* MAKE TOP TRI */
-					
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_TriBlast;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_TriBlast;	
+
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_TriBlast;
+		gNewObjectDefinition.type = GLOBAL_MObjType_TriBlast;
 		gNewObjectDefinition.flags = 0;
 		gNewObjectDefinition.slot = PLAYER_SLOT-1;						// dont update till next loop
 		gNewObjectDefinition.moveCall = MoveTriBlast;
@@ -800,64 +801,64 @@ float	r;
 		if (newObj == nil)
 			return;
 
-		newObj->Health = 1.0;											
-		
+		newObj->Health = 1.0;
+
 		newObj->Delta.x = (-sin(r) * TRIBLAST_SPEED) + gDelta.x;			// calc deltas
 		newObj->Delta.z = (-cos(r) * TRIBLAST_SPEED) + gDelta.z;
 		newObj->Delta.y = newObj->Delta.y + 200;
-				
+
 		newObj->CType = CTYPE_MYBULLET;									// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
 		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks
-		
+
 		newObj->Damage = TRIBLAST_DAMAGE;
 		newObj->Kind = ATTACK_MODE_TRIBLAST;
-				
+
 		UpdateObjectTransforms(newObj);
-		
-				
+
+
 					/* MAKE LEFT TRI */
-					
+
 		gNewObjectDefinition.rot = r = theNode->Rot.y-.2;
 		newObj = MakeNewDisplayGroupObject(&gNewObjectDefinition);
 		if (newObj == nil)
 			return;
 
-		newObj->Health = 1.0;													
+		newObj->Health = 1.0;
 		newObj->Delta.x = (-sin(r) * TRIBLAST_SPEED) + gDelta.x;			// calc deltas
 		newObj->Delta.z = (-cos(r) * TRIBLAST_SPEED) + gDelta.z;
 		newObj->Delta.y = newObj->Delta.y - 20;
-		
+
 		newObj->CType = CTYPE_MYBULLET;									// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
-		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks		
+		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks
 		newObj->Damage = TRIBLAST_DAMAGE;
 		newObj->Kind = ATTACK_MODE_TRIBLAST;
-				
+
 		UpdateObjectTransforms(newObj);
-				
+
 					/* MAKE RIGHT TRI */
-					
+
 		gNewObjectDefinition.rot = r = theNode->Rot.y + .2;
 		newObj = MakeNewDisplayGroupObject(&gNewObjectDefinition);
 		if (newObj == nil)
 			return;
 
-		newObj->Health = 1.0;													
+		newObj->Health = 1.0;
 		newObj->Delta.x = (-sin(r) * TRIBLAST_SPEED) + gDelta.x;			// calc deltas
 		newObj->Delta.z = (-cos(r) * TRIBLAST_SPEED) + gDelta.z;
 		newObj->Delta.y = newObj->Delta.y - 20;
 
 		newObj->CType = CTYPE_MYBULLET;									// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
-		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks		
+		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks
 		newObj->Damage = TRIBLAST_DAMAGE;
 		newObj->Kind = ATTACK_MODE_TRIBLAST;
-				
+
 		UpdateObjectTransforms(newObj);
-				
-				
+
+
 		PlayEffect(EFFECT_BLASTER);										// play sound
-		
+
 				/* UPDATE INFOBAR */
-				
+
 		if (--gWeaponInventory[gCurrentAttackMode] == 0)				// dec inventory & if run out, select next weapon
 		{
 			gPossibleAttackModes[gCurrentAttackMode] = false;
@@ -880,23 +881,23 @@ float	x,y,z,fps;
 	fps = gFramesPerSecondFrac;
 
 			/* DECAY IT */
-			
+
 	theNode->Health -= 1.1f * fps;
 	if (theNode->Health < 0)
 	{
 		DeleteObject(theNode);
 		return;
 	}
-	
+
 			/* MOVE IT */
-			
+
 	x = gCoord.x += gDelta.x * fps;
 	y = gCoord.y += gDelta.y * fps;
 	z = gCoord.z += gDelta.z * fps;
 
 
 		/* SEE IF HIT TERRAIN */
-		
+
 	if (y <= GetTerrainHeightAtCoord_Planar(x,z))
 	{
 		ExplodeBullet(theNode);
@@ -904,13 +905,13 @@ float	x,y,z,fps;
 	}
 
 			/* DO BULLET COLLISION */
-			
+
 	if (DoBulletCollisionDetect(theNode))
 		return;
 
 
 			/* RANDOM SPIN */
-			
+
 	theNode->Rot.x = RandomFloat()*PI2;
 	theNode->Rot.y = RandomFloat()*PI2;
 
@@ -928,20 +929,20 @@ static void ShootNuke(ObjNode *theNode)
 ObjNode	*newObj;
 float	r;
 
-	gAutoFireCounter += gFramesPerSecondFrac * NUKE_RATE;			// check auto fire timer	
+	gAutoFireCounter += gFramesPerSecondFrac * NUKE_RATE;			// check auto fire timer
 	if (gAutoFireCounter >= 1.0)
 	{
 		gAutoFireCounter -= 1.0;
-	
+
 						/* CALC START COORD */
-						
+
 		FindCoordOnJoint(theNode, MYGUY_LIMB_GUN, &gGunTipOffset, &gNewObjectDefinition.coord);
-	
-	
+
+
 					/* MAKE MODEL */
-					
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_Nuke;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_Nuke;	
+
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_Nuke;
+		gNewObjectDefinition.type = GLOBAL_MObjType_Nuke;
 		gNewObjectDefinition.flags = 0;
 		gNewObjectDefinition.slot = PLAYER_SLOT-1;						// dont update till next loop
 		gNewObjectDefinition.moveCall = MoveNuke;
@@ -951,22 +952,22 @@ float	r;
 		if (newObj == nil)
 			return;
 
-		newObj->Health = 1.0;											
-		
+		newObj->Health = 1.0;
+
 		r = theNode->Rot.y;
 		newObj->Delta.x = (-sin(r) * NUKE_SPEED) + gDelta.x;			// calc deltas
 		newObj->Delta.z = (-cos(r) * NUKE_SPEED) + gDelta.z;
-				
+
 		newObj->CType = CTYPE_MYBULLET;									// note: don't set as CTYPE_HURTENEMY since bullets do their own collision check
 		newObj->CBits = CBITS_TOUCHABLE;								// .. which also means I don't need a collision box since bullets use point collision checks
-		
+
 		newObj->Kind = ATTACK_MODE_NUKE;
 		newObj->Damage = NUKE_DAMAGE;
-				
+
 //		PlayEffect(EFFECT_BLASTER);										// play sound
-		
+
 				/* UPDATE INFOBAR */
-				
+
 		if (--gWeaponInventory[gCurrentAttackMode] == 0)				// dec inventory & if run out, select next weapon
 		{
 			gPossibleAttackModes[gCurrentAttackMode] = false;
@@ -989,16 +990,16 @@ float	x,y,z,fps;
 	fps = gFramesPerSecondFrac;
 
 			/* SEE IF READY TO EXPLODE */
-			
+
 	theNode->Health -= .8 * fps;
 	if (theNode->Health < 0)
 	{
 		ExplodeBullet(theNode);
 		return;
 	}
-	
+
 			/* MOVE IT */
-			
+
 	x = gCoord.x += gDelta.x * fps;
 	y = gCoord.y += gDelta.y * fps;
 	z = gCoord.z += gDelta.z * fps;
@@ -1007,7 +1008,7 @@ float	x,y,z,fps;
 	theNode->Rot.z += fps * 8;
 
 		/* SEE IF HIT TERRAIN */
-		
+
 	if (y <= GetTerrainHeightAtCoord_Planar(x,z))
 	{
 		ExplodeBullet(theNode);
@@ -1015,7 +1016,7 @@ float	x,y,z,fps;
 	}
 
 			/* DO BULLET COLLISION */
-			
+
 	if (DoBulletCollisionDetect(theNode))
 		return;
 
@@ -1030,7 +1031,7 @@ static void DetonateNuke(ObjNode *theNode)
 ObjNode *newObj;
 
 			/* DELETE NUKE */
-			
+
 	DeleteObject(theNode);
 
 	PlayEffect_Parms(EFFECT_EXPLODE,FULL_CHANNEL_VOLUME,kMiddleC-6);	// play sound
@@ -1039,10 +1040,10 @@ ObjNode *newObj;
 			/* CREATE SHOCKWAVE */
 
 	gNewObjectDefinition.coord = theNode->Coord;
-	gNewObjectDefinition.group = GLOBAL_MGroupNum_Explosion;	
-	gNewObjectDefinition.type = GLOBAL_MObjType_Explosion;	
+	gNewObjectDefinition.group = GLOBAL_MGroupNum_Explosion;
+	gNewObjectDefinition.type = GLOBAL_MObjType_Explosion;
 	gNewObjectDefinition.flags = 0;
-	gNewObjectDefinition.slot = 200;	
+	gNewObjectDefinition.slot = 200;
 	gNewObjectDefinition.moveCall = MoveNukeShockwave;
 	gNewObjectDefinition.rot = 0;
 	gNewObjectDefinition.scale = 1;
@@ -1052,12 +1053,12 @@ ObjNode *newObj;
 		newObj->Health = .9;
 		newObj->Damage = newObj->Health * 3;
 		MakeObjectTransparent(newObj, newObj->Health);					// make transparent
-		newObj->CType = CTYPE_HURTENEMY|CTYPE_HURTME;	
-		newObj->CBits = CBITS_TOUCHABLE;	
+		newObj->CType = CTYPE_HURTENEMY|CTYPE_HURTME;
+		newObj->CBits = CBITS_TOUCHABLE;
 		SetObjectCollisionBounds(newObj,10,-10,-10,10,10,-10);
-	}	
+	}
 }
- 
+
 
 /*********************** MOVE NUKE SHOCKWAVE **************************/
 
@@ -1067,7 +1068,7 @@ float	fps = gFramesPerSecondFrac;
 float	s;
 
 			/* DECAY IT */
-			
+
 	theNode->Health -= fps * .6;						// decay it
 	if (theNode->Health <= 0)
 	{
@@ -1076,24 +1077,16 @@ float	s;
 	}
 	MakeObjectTransparent(theNode, theNode->Health);
 	theNode->Damage = theNode->Health * .5;				// update damage
-	
-	
+
+
 			/* ENLARGE */
-			
-	s = theNode->Scale.x = theNode->Scale.y = theNode->Scale.z += fps * 80;	
+
+	s = theNode->Scale.x = theNode->Scale.y = theNode->Scale.z += fps * 80;
 	SetObjectCollisionBounds(theNode,s*10,s*-10,s*-10,s*10,s*10,s*-10);
-		
-		
+
+
 			/* UPATE */
-			
+
 	UpdateObjectTransforms(theNode);
 
 }
-
-
-
- 
- 
- 
- 
- 

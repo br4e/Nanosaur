@@ -173,8 +173,8 @@ long	i;
 	for (i= 0; i < gNumTerrainItems; i++)
 		if (gMasterItemList[i].type == MAP_ITEM_MYSTARTCOORD)							// see if it's a MyStartCoord item
 		{
-			gMyCoord.x = gMyStartX = 28500; // (gMasterItemList[i].x * MAP2UNIT_VALUE);	// convert to world coords
-			gMyCoord.z = gMyStartZ = 42500; // gMasterItemList[i].y * MAP2UNIT_VALUE;
+			gMyCoord.x = gMyStartX = 26000; // (gMasterItemList[i].x * MAP2UNIT_VALUE);	// convert to world coords
+			gMyCoord.z = gMyStartZ = 13000; // gMasterItemList[i].y * MAP2UNIT_VALUE;
 			gMyStartAim = gMasterItemList[i].parm[0];							// get aim 0..7
 			return;
 		}

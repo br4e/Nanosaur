@@ -27,14 +27,14 @@ static void MoveStego_Standing(ObjNode *theNode);
 
 #define	STEGO_ATTACK_RANGE	700
 #define STEGO_TURN_SPEED	1
-#define	MAX_WALK_SPEED		100
+#define	MAX_WALK_SPEED		70
 
 #define	STEGO_TARGET_SCALE	350
 
 
 
 #define	STEGO_HEALTH		6.0
-#define	STEGO_DAMAGE		.3
+#define	STEGO_DAMAGE		.2
 
 #define	STEGO_SCALE			1.4
 

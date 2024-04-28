@@ -75,41 +75,35 @@ void CalcPlayerKeyControls(void)
 //
 
 static KeyControlType KeysToControlBits(void)
-{			
-KeyControlType	bits;
-	
-	bits = 0;							// init to 0
+{
+	KeyControlType bits = 0;					// init to 0
 
 	if (GetNeedState(kNeed_TurnLeft))			// rot left
 		bits |= KEYCONTROL_ROTLEFT;
-	else
-	if (GetNeedState(kNeed_TurnRight))			// rot right
+	else if (GetNeedState(kNeed_TurnRight))		// rot right
 		bits |= KEYCONTROL_ROTRIGHT;
-				
+
 	if (GetNeedState(kNeed_Forward))			// forward
 		bits |= KEYCONTROL_FORWARD;
-	else
-	if (GetNeedState(kNeed_Backward))			// backward
+	else if (GetNeedState(kNeed_Backward))		// backward
 		bits |= KEYCONTROL_BACKWARD;
-	
+
 	if (GetNeedState(kNeed_Jump))				// jump
 		bits |= KEYCONTROL_JUMP;
-	else
-	if (GetNeedState(kNeed_Attack))				// attack
+	else if (GetNeedState(kNeed_Attack))		// attack
 		bits |= KEYCONTROL_ATTACK;
-	else
-	if (GetNeedState(kNeed_JetUp))				// Jet Up
+	else if (GetNeedState(kNeed_JetUp))			// Jet Up
 		bits |= KEYCONTROL_JETUP;
-	else
-	if (GetNeedState(kNeed_JetDown))			// Jet Down
+	else if (GetNeedState(kNeed_JetDown))		// Jet Down
 		bits |= KEYCONTROL_JETDOWN;
-	
-	if (GetNewNeedState(kNeed_AttackMode))		// attack mode change
-		bits |= KEYCONTROL_ATTACKMODE;
 
-	if (GetNewNeedState(kNeed_PickUp))			// try pickup
+	if (GetNewNeedState(kNeed_NextWeapon))		// attack mode change
+		bits |= KEYCONTROL_NEXTWEAPON;
+	else if (GetNewNeedState(kNeed_PrevWeapon))
+		bits |= KEYCONTROL_PREVWEAPON;
+
+	if (GetNeedState(kNeed_PickUp))				// try pickup
 		bits |= KEYCONTROL_PICKUP;
-		
 
 	return(bits);
 }
@@ -150,10 +144,12 @@ Byte		currentAnim;
 			
 		if (fabs(theNode->Speed) < 210.0f)					
 		{
-			if (currentAnim != PLAYER_ANIM_TURNLEFT)
-				if (theNode->StatusBits & STATUS_BIT_ONGROUND)					// must be on ground
-					if (gCameraMode != CAMERA_MODE_FIRSTPERSON)					// dont do it in 1st person camera mode
-						MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_TURNLEFT,6);
+			if (currentAnim != PLAYER_ANIM_TURNLEFT
+				&& theNode->StatusBits & STATUS_BIT_ONGROUND				// must be on ground
+				&& gCameraMode != CAMERA_MODE_FIRSTPERSON)					// don't do it in 1st person camera mode
+			{
+				MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_TURNLEFT, 6);
+			}
 		}
 		
 			/* TOO FAST, SEE IF NEED TO STOP TURN ANIM */
@@ -176,10 +172,12 @@ Byte		currentAnim;
 			
 		if (fabs(theNode->Speed) < 210.0f)					
 		{
-			if (currentAnim != PLAYER_ANIM_TURNRIGHT)
-				if (theNode->StatusBits & STATUS_BIT_ONGROUND)					// must be on ground
-					if (gCameraMode != CAMERA_MODE_FIRSTPERSON)					// dont do it in 1st person camera mode
-						MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_TURNRIGHT,4);
+			if (currentAnim != PLAYER_ANIM_TURNRIGHT
+				&& theNode->StatusBits & STATUS_BIT_ONGROUND				// must be on ground
+				&& gCameraMode != CAMERA_MODE_FIRSTPERSON)					// don't do it in 1st person camera mode
+			{
+				MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_TURNRIGHT, 4);
+			}
 		}
 		
 			/* TOO FAST, SEE IF NEED TO STOP TURN ANIM */
@@ -219,12 +217,14 @@ Byte		currentAnim;
 			/*****************************/
 			/* SEE IF CHANGE ATTACK MODE */
 			/*****************************/
-			
-	if (bits & KEYCONTROL_ATTACKMODE)
+
+	if (bits & KEYCONTROL_NEXTWEAPON)
 		NextAttackMode();
-	
-	
-	
+	else if (bits & KEYCONTROL_PREVWEAPON)
+		PreviousAttackMode();
+
+
+
 			/*****************/
 			/* SEE IF JUMP 	 */
 			/*****************/
@@ -321,11 +321,13 @@ KeyControlType	bits;
 	else
 		theNode->Accel = 0;
 
-	
+
 			/* SEE IF CHANGE ATTACK MODE */
-			
-	if (bits & KEYCONTROL_ATTACKMODE)
-		NextAttackMode();	
+
+	if (bits & KEYCONTROL_NEXTWEAPON)
+		NextAttackMode();
+	else if (bits & KEYCONTROL_PREVWEAPON)
+		PreviousAttackMode();
 }
 
 
@@ -693,8 +695,8 @@ float	x,z;
 	gDelta.y -= GRAVITY_CONSTANT*gFramesPerSecondFrac;			// add gravity
 
 	if (gDelta.y < 0.0f)											// if falling, keep dy at least -1.0 to avoid collision jitter on platforms
-		if (gDelta.y > (-1.0f * gFramesPerSecond))
-			gDelta.y = (-1.0f * gFramesPerSecond);
+		if (gDelta.y > (-1.0f * gFramesPerSecondFrac))
+			gDelta.y = (-1.0f * gFramesPerSecondFrac);
 
 }
 

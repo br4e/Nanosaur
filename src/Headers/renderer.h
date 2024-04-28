@@ -39,15 +39,6 @@ typedef struct RenderModifiers
 	int						sortPriority;
 } RenderModifiers;
 
-
-enum
-{
-	kCoverQuadFill						= 0,
-	kCoverQuadPillarbox					= 1,
-	kCoverQuadLetterbox					= 2,
-	kCoverQuadFit						= kCoverQuadPillarbox | kCoverQuadLetterbox,
-};
-
 typedef enum
 {
 	kRendererTextureFlags_None			= 0,
@@ -99,7 +90,11 @@ void Render_StartFrame(void);
 // Flushes the rendering queue.
 void Render_EndFrame(void);
 
-void Render_SetViewport(bool scissor, int x, int y, int w, int h);
+void Render_SetBackdropClearColor(TQ3ColorRGBA clearColor);
+
+void Render_SetViewportClearColor(TQ3ColorRGBA clearColor);
+
+void Render_SetViewport(TQ3Area pane);
 
 #pragma mark -
 
@@ -133,16 +128,24 @@ void Render_Exit2D(void);
 
 #pragma mark -
 
-void Render_Alloc2DCover(int width, int height);
+void Render_AllocBackdrop(int width, int height);
 
-void Render_Dispose2DCover(void);
+void Render_DisposeBackdrop(void);
 
-void Render_Clear2DCover(uint32_t argb);
+void Render_ClearBackdrop(uint32_t argb);
 
-void Render_Draw2DCover(int fit);
+void Render_DrawBackdrop(bool keepBackdropAspectRatio);
 
 #pragma mark -
 
 void Render_SetWindowGamma(float percent);
 
 void Render_FreezeFrameFadeOut(void);
+
+#pragma mark -
+
+TQ3Vector2D FitRectKeepAR(
+		int logicalWidth,
+		int logicalHeight,
+		float displayWidth,
+		float displayHeight);

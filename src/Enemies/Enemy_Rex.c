@@ -26,6 +26,8 @@ static void  MoveRex_Pounce(ObjNode *theNode);
 /*    CONSTANTS             */
 /****************************/
 
+#define REX_ALWAYS_CHASE		1
+
 #define	REX_MAX_ATTACK_RANGE	1100.0f
 #define	REX_MIN_ATTACK_RANGE	350.0f
 
@@ -90,8 +92,13 @@ ObjNode	*newObj;
 		return(false);
 	newObj->TerrainItemPtr = itemPtr;
 
+#if REX_ALWAYS_CHASE
 	SetSkeletonAnim(newObj->Skeleton, REX_ANIM_WALK);
-
+	newObj->Skeleton->CurrentAnimTime = RandomFloat() * newObj->Skeleton->MaxAnimTime;
+#else
+	SetSkeletonAnim(newObj->Skeleton, REX_ANIM_STAND);
+#endif
+	
 
 				/* SET BETTER INFO */
 
@@ -150,6 +157,10 @@ static	void(*myMoveTable[])(ObjNode *) =
 
 static void  MoveRex_Standing(ObjNode *theNode)
 {
+#if !REX_ALWAYS_CHASE
+	float dist = CalcQuickDistance(gCoord.x + theNode->TargetOff.x, gCoord.z + theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
+	if (dist < (REX_MAX_ATTACK_RANGE * 1.3f))
+#endif
 		MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_WALK,5);
 
 				/* DO ENEMY COLLISION */
@@ -166,50 +177,55 @@ static void  MoveRex_Standing(ObjNode *theNode)
 
 static void  MoveRex_Walking(ObjNode *theNode)
 {
-float	r,speed,dist,fps,aim;
+	float fps = gFramesPerSecondFrac;
+	float dist = CalcQuickDistance(gCoord.x + theNode->TargetOff.x, gCoord.z + theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
 
-	fps = gFramesPerSecondFrac;
+	float speed = MAX_WALK_SPEED;
+	float speedMult = 1;
+
+			/* SEE IF FAR FROM PLAYER */
+
+	if (dist > (REX_MAX_ATTACK_RANGE*1.3f))
+	{
+#if REX_ALWAYS_CHASE
+		speedMult = 0.5f;													// walk slowly when far
+#else
+		MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_STAND, 3);			// return to standing state
+#endif
+	}
 
 			/* MOVE TOWARD PLAYER */
 
-	aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, REX_TURN_SPEED, true);
+	float aim = TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, REX_TURN_SPEED * speedMult, true);
 
-	r = theNode->Rot.y;
-	speed = theNode->Speed = MAX_WALK_SPEED;
-	gDelta.x = -sin(r) * speed;
-	gDelta.z = -cos(r) * speed;
-	gDelta.y -= GRAVITY_CONSTANT*fps;				// add gravity
+	speed = speed * speedMult;
+
+	theNode->Speed = speed;
+
+	gDelta.x = -sin(theNode->Rot.y) * theNode->Speed;
+	gDelta.z = -cos(theNode->Rot.y) * theNode->Speed;
+	gDelta.y -= GRAVITY_CONSTANT * fps;				// add gravity
 
 	MoveEnemy(theNode, theNode->BottomOff);
 
-				/* SEE IF RETURN TO STANDING */
-
-	dist = CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
-	if (dist > (REX_MAX_ATTACK_RANGE*1.3f))
-		MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_STAND,3);
-
 			/* SEE IF CLOSE ENOUGH TO POUNCE */
-	else
-	if (dist < REX_MIN_ATTACK_RANGE)
+
+	if (dist < REX_MIN_ATTACK_RANGE
+		&& aim < 0.5f)								// must be aimed mostly at me
 	{
-		if (aim < 0.5f)									// must be aimed mostly at me
-		{
-			MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_POUNCE,5);
-			theNode->PounceFlag = false;
-			theNode->IsPouncingFlag = false;
-			theNode->Speed = 0;
-			PlayEffect_Parms(EFFECT_ROAR,FULL_CHANNEL_VOLUME,kMiddleC+7);
-		}
+		MorphToSkeletonAnim(theNode->Skeleton, REX_ANIM_POUNCE,5);
+		theNode->PounceFlag = false;
+		theNode->IsPouncingFlag = false;
+		theNode->Speed = 0;
+		PlayEffect_Parms(EFFECT_ROAR,FULL_CHANNEL_VOLUME,kMiddleC+7);
 	}
 
-
-		/* SEE IF CHANGE TARGET */
+			/* SEE IF CHANGE TARGET */
 
 	if ((theNode->TargetChangeTimer += fps) > 3.0f)	// every n seconds
 	{
 		CalcNewTargetOffsets(theNode,REX_TARGET_SCALE);
 		theNode->TargetChangeTimer	= 0;
-
 
 				/* MAKE ROAR */
 
@@ -219,7 +235,6 @@ float	r,speed,dist,fps,aim;
 			if (volume > 0)
 				PlayEffect_Parms(EFFECT_ROAR,volume,kMiddleC+(MyRandomLong()&7));
 		}
-
 	}
 
 		/* UPDATE ANIM SPEED */
@@ -227,7 +242,7 @@ float	r,speed,dist,fps,aim;
 	theNode->Skeleton->AnimSpeed = speed * .005f;
 
 
-				/* DO ENEMY COLLISION */
+		/* DO ENEMY COLLISION */
 
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;

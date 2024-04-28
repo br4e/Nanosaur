@@ -97,7 +97,6 @@ do_again:
 	viewDef.view.clearColor.r 		= 0;
 	viewDef.view.clearColor.g 		= 0;
 	viewDef.view.clearColor.b 		= 0;
-	viewDef.view.backdropFit		= kCoverQuadPillarbox;
 
 #if TWO_MEG_VERSION
 	viewDef.view.paneClip.left 		+= 0;  
@@ -129,7 +128,7 @@ do_again:
 
 			/* LOAD ART */
 			
-	FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":models:MenuInterface.3dmf", &file);
+	FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":Models:MenuInterface.3dmf", &file);
 	LoadGrouped3DMF(&file, MODEL_GROUP_MENU);
 	LoadASkeleton(SKELETON_TYPE_DEINON);
 

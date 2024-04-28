@@ -73,7 +73,7 @@ void LoadSpriteGroup(const char* groupName, short groupNum, int numFrames)
 		uint8_t* pixels;
 		TGAHeader header;
 
-		snprintf(path, sizeof(path), ":sprites:%s%d.tga", groupName, 1000 + i);
+		SDL_snprintf(path, sizeof(path), ":Sprites:%s%d.tga", groupName, 1000 + i);
 
 		FSSpec spec;
 		err = FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, path, &spec);
@@ -172,7 +172,7 @@ void DrawSpriteFrameToScreen(short group, int frame, int x, int y)
 			/**************/
 	else
 	{
-		uint32_t* destPtr = (uint32_t *)(gCoverWindowPixPtr + (y * GAME_VIEW_WIDTH) + x);		// calc start addr
+		uint32_t* destPtr = (uint32_t *)(gBackdropPixels + (y * GAME_VIEW_WIDTH) + x);		// calc start addr
 	
 	
 				/* DRAW WITH MASK */

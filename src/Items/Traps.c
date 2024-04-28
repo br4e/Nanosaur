@@ -136,7 +136,7 @@ float	oldX,oldZ,delta;
 						gDelta.y = 400.0f;
 						
 					d = CalcQuickDistance(gCoord.x, gCoord.z, gMyCoord.x, gMyCoord.z);	// calc volume based on distance
-					volume = FULL_CHANNEL_VOLUME - (long)(d * .15f);
+					volume = FULL_CHANNEL_VOLUME - (int)(d * .15f);
 					if (volume > 0)
 						PlayEffect_Parms(EFFECT_ROCKSLAM,volume,kMiddleC-10+(MyRandomLong()&3));
 				}
@@ -287,7 +287,7 @@ float	d,y;
 	if (d < POD_BURST_DIST)
 	{
 		PodShootSpores(theNode);
-		QD3D_ExplodeGeometry(theNode, 120, PARTICLE_MODE_UPTHRUST, 3, 1.0);
+		QD3D_ExplodeGeometry(theNode, 120, SHARD_MODE_UPTHRUST, 3, 1.0);
 		theNode->TerrainItemPtr = nil;						// never coming back
 		DeleteObject(theNode);		
 		PlayEffect_Parms(EFFECT_EXPLODE,FULL_CHANNEL_VOLUME,kMiddleC-5);	// play sound		

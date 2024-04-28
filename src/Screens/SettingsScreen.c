@@ -8,7 +8,7 @@ static const uint32_t kMutedColor	= 0x404040;
 static const uint32_t kTitleColor	= 0x606060;
 static const uint32_t kAccentColor	= 0x108020;
 
-static const int kColumnX[] = { 128, 300, 400, 500 };
+static const int kColumnX[] = { 120, 320, 450, 580 };
 
 static int selectedEntry = 0;
 
@@ -57,28 +57,28 @@ static SettingEntry gSettingEntries[] =
 {
 	{nil							, "Configure Controls"	, Callback_EnterControls,	0,	{ NULL } },
 	{nil							, nil					, nil,						0,  { NULL } },
-	{&gGamePrefs.extreme			, "Game Difficulty"		, Callback_Difficulty,		2,	{ "Easy", "EXTREME!" } },
+	{&gGamePrefs.extreme			, "Game Difficulty"		, Callback_Difficulty,		2,	{ "EASY", "EXTREME!" } },
 	{nil							, nil					, nil,						0,  { NULL } },
 	{&gGamePrefs.music				, "Music"				, Callback_Music,			2,	{ "NO", "YES" }, },
 	{&gGamePrefs.ambientSounds		, "Ambient Sounds"		, nil,						2,	{ "NO", "YES" }, },
 	{nil							, nil					, nil,						0,  { NULL } },
 	{&gGamePrefs.fullscreen			, "Fullscreen"			, Callback_Fullscreen,		2,	{ "NO", "YES" }, },
 	{&gGamePrefs.vsync				, "V-Sync"				, Callback_VSync,			2,	{ "NO", "YES" }, },
+	{&gGamePrefs.force4x3			, "Aspect Ratio"		, NULL,						2,	{ "FILL SCREEN", "FORCE 4:3" }, },
+	{&gGamePrefs.preferredDisplay	, "Preferred Display"	, Callback_Fullscreen,		1,	{ "DEFAULT" }, },
 #if !(__APPLE__)
-	{&gGamePrefs.preferredDisplay	, "Preferred Display"	, Callback_Fullscreen,		1,	{ "Default" }, },
 	{&gGamePrefs.antialiasingLevel	, "Antialiasing"		, Callback_Antialiasing,	4,	{ "NO", "MSAA 2x", "MSAA 4x", "MSAA 8x" }, },
 #endif
 	{nil							, nil					, nil,						0,  { NULL } },
 	{&gGamePrefs.highQualityTextures, "Texture Filtering"	, nil,						2,	{ "NO", "YES" }, },
 	{&gGamePrefs.canDoFog			, "Fog"					, nil,						2,	{ "NO", "YES" }, },
+	{&gGamePrefs.whiteSky			, "Sky Color"			, nil,						2,	{ "BLACK", "WHITE" } },
+	{&gGamePrefs.nanosaurTeethFix	, "Nano's Dentist Is"	, nil,						2,	{ "EXTINCT", "ALIVE" } },
 //	{&gGamePrefs.shadows			, "Shadow Decals"		, nil,						2,	{ "NO", "YES" }, },
 //	{&gGamePrefs.dust				, "Dust"				, nil,						2,	{ "NO", "YES" }, },
 	{nil							, nil					, nil,						0,  { NULL } },
 	{&gGamePrefs.mainMenuHelp		, "Show Help in Main Menu"		, nil,				2,	{ "NO", "YES" }, },
 	{&gGamePrefs.debugInfoInTitleBar, "Debug Info in Title Bar",	Callback_DebugInfo,	2,  { "NO", "YES" } },
-	{nil							, nil					, nil,						0,  { NULL } },
-	{nil							, nil					, nil,						0,  { NULL } },
-	{nil							, nil					, nil,						0,  { NULL } },
 	{nil							, nil					, nil,						0,  { NULL } },
 	{nil							, "Done"				, Callback_Done,			0,  { NULL } },
 };
@@ -91,8 +91,8 @@ static const char* kInputNeedCaptions[NUM_CONTROL_NEEDS] =
 	[kNeed_TurnRight	] = "Turn Right",
 	[kNeed_JetUp		] = "Jetpack Up",
 	[kNeed_JetDown		] = "Jetpack Down",
-//[kNeed_PrevWeapon	] = "Previous Weapon",
-	[kNeed_AttackMode	] = "Next Weapon",
+	[kNeed_PrevWeapon	] = "Previous Weapon",
+	[kNeed_NextWeapon	] = "Next Weapon",
 	[kNeed_Attack		] = "Shoot",
 	[kNeed_PickUp		] = "Pick Up, Throw",
 	[kNeed_Jump			] = "Jump, Double-Jump",
@@ -104,7 +104,6 @@ static const char* kInputNeedCaptions[NUM_CONTROL_NEEDS] =
 	[kNeed_ToggleGPS	] = "Toggle GPS",
 	[kNeed_ToggleMusic	] = "Toggle Music",
 	[kNeed_ToggleAmbient] = "Toggle Ambient Sounds",
-	[kNeed_ToggleFullscreen] = "Toggle Fullscreen",
 	[kNeed_UIUp			] = nil,
 	[kNeed_UIDown		] = nil,
 	[kNeed_UILeft		] = nil,
@@ -118,17 +117,6 @@ static const int numSettingEntries = sizeof(gSettingEntries) / sizeof(SettingEnt
 
 static bool needFullRender = false;
 
-
-
-static unsigned int PositiveModulo(int value, unsigned int m)
-{
-	int mod = value % (int) m;
-	if (mod < 0)
-	{
-		mod += m;
-	}
-	return mod;
-}
 
 
 static void Cycle(SettingEntry* entry, int delta)
@@ -209,25 +197,6 @@ static void Callback_Done(void)
 	}
 }
 
-static void DrawDebugInfo(void)
-{
-	char text[256];
-
-	RGBForeColor2(kMutedColor);
-
-	snprintf(text, sizeof(text), "Game version: %s", PROJECT_VERSION);
-	MoveTo(640 - 8 - TextWidthC(text), 480 - 12 - 14 * 2);
-	DrawStringC(text);
-
-	snprintf(text, sizeof(text), "OpenGL %s", glGetString(GL_VERSION));
-	MoveTo(640 - 8 - TextWidthC(text), 480 - 12 - 14 * 1);
-	DrawStringC(text);
-
-	snprintf(text, sizeof(text), "%s", glGetString(GL_RENDERER));
-	MoveTo(640 - 8 - TextWidthC(text), 480 - 12 - 14 * 0);
-	DrawStringC(text);
-}
-
 static void DrawRow(
 		int y,
 		bool rowIsSelected,
@@ -293,8 +262,6 @@ static void DrawSettingsPage(void)
 		Rect r = gCoverWindow->portRect;
 		EraseRect(&r);
 
-		DrawDebugInfo();
-
 		const char* title = PRO_MODE ? "NANOSAUR EXTREME SETTINGS" : "NANOSAUR SETTINGS";
 		MoveTo(kColumnX[0], 50);
 		RGBForeColor2(kTitleColor);
@@ -303,8 +270,7 @@ static void DrawSettingsPage(void)
 		if (gShowAntialiasingWarning)
 		{
 			RGBForeColor2(0xFFFF9900);
-			MoveTo(8, 480 - 12 - 14 * 1); DrawStringC("The new antialiasing level will take");
-			MoveTo(8, 480 - 12 - 14 * 0); DrawStringC("effect when you restart the game.");
+			MoveTo(80, 480 - 4); DrawStringC("The new antialiasing level will take effect when you restart the game.");
 		}
 	}
 
@@ -563,7 +529,6 @@ static void NavigateControlsPage_AwaitingPress(void)
 
 static void InitDisplayPref(void)
 {
-#if !(__APPLE__)
 	// Init display pref
 	for (size_t i = 0; i < sizeof(gSettingEntries)/sizeof(gSettingEntries[0]); i++)
 	{
@@ -579,31 +544,32 @@ static void InitDisplayPref(void)
 
 			for (size_t j = 0; j < entry->numChoices; j++)
 			{
-				snprintf(gMonitorNameBuffers[j], 64, "Monitor #%d (%s)", (int) j+1, SDL_GetDisplayName(j));
+				SDL_snprintf(gMonitorNameBuffers[j], 64, "DISPLAY %d", (int) j+1);
 				entry->choices[j] = gMonitorNameBuffers[j];
 			}
 
 			for (size_t j = entry->numChoices; j < MAX_CHOICES; j++)
 			{
-				snprintf(gMonitorNameBuffers[j], 64, "Disconnected monitor #%d", (int) j+1);
+				SDL_snprintf(gMonitorNameBuffers[j], 64, "DISCONNECTED DISPLAY %d", (int) j+1);
 			}
 
 			break;
 		}
 	}
-#endif
 }
 
 void DoSettingsScreen(void)
 {
-	SDL_GLContext glContext = SDL_GL_CreateContext(gSDLWindow);
-	GAME_ASSERT(glContext);
-
-	SDL_GL_SetSwapInterval(gGamePrefs.vsync ? 1 : 0);
-
 	Render_InitState();
-	Render_Alloc2DCover(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);
-	glClearColor(((kBGColor >> 16) & 0xFF) / 255.0f, ((kBGColor >> 8) & 0xFF) / 255.0f, (kBGColor & 0xFF) / 255.0f, 1.0f);
+	Render_AllocBackdrop(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);
+
+	Render_SetBackdropClearColor((TQ3ColorRGBA)
+		{
+			.r = (float) ((kBGColor >> 16) & 0xFF) / 255.0f,
+			.g = (float) ((kBGColor >>  8) & 0xFF) / 255.0f,
+			.b = (float) ((kBGColor      ) & 0xFF) / 255.0f,
+			.a = 1.0f
+		});
 
 	needFullRender = true;
 	gSettingsState = kSettingsState_FadeIn;
@@ -662,7 +628,7 @@ void DoSettingsScreen(void)
 		DoSoundMaintenance();
 
 		Render_StartFrame();
-		Render_Draw2DCover(kCoverQuadFit);
+		Render_DrawBackdrop(true);
 		Render_EndFrame();
 
 		SDL_GL_SwapWindow(gSDLWindow);
@@ -671,6 +637,5 @@ void DoSettingsScreen(void)
 	SavePrefs(&gGamePrefs);
 
 	Render_FreezeFrameFadeOut();
-	Render_Dispose2DCover();
-	SDL_GL_DeleteContext(glContext);
+	Render_DisposeBackdrop();
 }

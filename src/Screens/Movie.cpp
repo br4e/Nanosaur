@@ -14,6 +14,8 @@
 
 void PlayAMovie(FSSpec* spec)
 {
+	gFadeOverlayOpacity = 0;
+
 	KillSong();
 
 	Pomme::Video::Movie movie;
@@ -30,16 +32,15 @@ void PlayAMovie(FSSpec* spec)
 
 	CinepakContext cinepak(movie.width, movie.height);
 
-	SDL_GLContext glContext = SDL_GL_CreateContext(gSDLWindow);
-	GAME_ASSERT(glContext);
-
-	SDL_GL_SetSwapInterval(gGamePrefs.vsync ? 1 : 0);
-
 	Render_InitState();
-	Render_Alloc2DCover(movie.width, movie.height);
-	glClearColor(0,0,0,1);
+	Render_AllocBackdrop(movie.width, movie.height);
+	Render_SetBackdropClearColor({0,0,0,1});
 
 	movie.audioStream.Play();
+
+	// Safely remove movie.audioStream from the mixer when this guard goes out of scope
+	// (whether by exiting the function or if UpdateInput throws Pomme::QuitRequest)
+	cmixer::SourceMixGuard audioStreamGuard(movie.audioStream);
 
 	bool movieAbortedByUser = false;
 
@@ -49,7 +50,7 @@ void PlayAMovie(FSSpec* spec)
 
 		{
 			const auto& frame = movie.videoFrames.front();
-			cinepak.DecodeFrame(frame.data(), frame.size());
+			cinepak.DecodeFrame(frame.data(), (int) frame.size());
 			movie.videoFrames.pop();
 		}
 
@@ -75,7 +76,8 @@ void PlayAMovie(FSSpec* spec)
 		DamagePortRegion(&damage);
 
 		Render_StartFrame();
-		Render_Draw2DCover(kCoverQuadLetterbox);
+		Render_DrawBackdrop(true);
+		Render_EndFrame();
 		SDL_GL_SwapWindow(gSDLWindow);
 
 		unsigned int endTicks = SDL_GetTicks();
@@ -96,10 +98,7 @@ void PlayAMovie(FSSpec* spec)
 		movieAbortedByUser = UserWantsOut();
 	}
 
-	movie.audioStream.Stop();
-
 	Render_FreezeFrameFadeOut();
 
-	Render_Dispose2DCover();
-	SDL_GL_DeleteContext(glContext);
+	Render_DisposeBackdrop();
 }

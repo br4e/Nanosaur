@@ -5,7 +5,6 @@
 #include <Pomme.h>
 
 #include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include <QD3D.h>
@@ -16,11 +15,18 @@ extern "C"
 {
 #endif
 
+#if !(OSXPPC)
+#define HQ_TERRAIN		1	// seamless terrain texturing (requires NPOT texture support)
+#else
+#define HQ_TERRAIN		0
+#endif
+
 #include "globals.h"
 #include "sprites.h"
 #include "mobjtypes.h"
 #include "objtypes.h"
 
+#include "pool.h"
 #include "3dmath.h"
 #include "3dmf.h"
 #include "bones.h"
@@ -61,6 +67,7 @@ extern "C"
 #include "window.h"
 
 extern	Boolean					gDisableAnimSounds;
+extern	Boolean					gGamePaused;
 extern	Boolean					gGameOverFlag;
 extern	Boolean					gMuteMusicFlag;
 extern	Boolean					gPlayerGotKilledFlag;
@@ -78,6 +85,7 @@ extern	float					gCameraDistFromMe;
 extern	float					gCameraRotX;
 extern	float					gCameraRotY;
 extern	float					gCameraViewYAngle;
+extern	float					gFadeOverlayOpacity;
 extern	float					gFramesPerSecond;
 extern	float					gFramesPerSecondFrac;
 extern	float					gFuel;
@@ -98,23 +106,22 @@ extern	int						MAX_STEGO;
 extern	int						MAX_TRICER;
 extern	int						PRO_MODE;
 extern	KeyControlType			gMyControlBits;
-extern	long					gCurrentSuperTileCol;
-extern	long					gCurrentSuperTileRow;
-extern	long					gCurrentSystemVolume;
+extern	int						gCurrentSuperTileCol;
+extern	int						gCurrentSuperTileRow;
 extern	long					gMyStartX;
 extern	long					gMyStartZ;
-extern	long					gNumSuperTilesDeep;
-extern	long					gNumSuperTilesWide;
-extern	long					gNumTerrainTextureTiles;
+extern	int						gNumSuperTilesDeep;
+extern	int						gNumSuperTilesWide;
+extern	int						gNumTerrainTextureTiles;
 extern	long					gPrefsFolderDirID;
-extern	long					gScreenXOffset;
-extern	long					gScreenYOffset;
-extern	long					gTerrainItemDeleteWindow_Far;
-extern	long					gTerrainItemDeleteWindow_Left;
-extern	long					gTerrainItemDeleteWindow_Near;
-extern	long					gTerrainItemDeleteWindow_Right;
-extern	long					gTerrainTileDepth;
-extern	long					gTerrainTileWidth;
+extern	int						gScreenXOffset;
+extern	int						gScreenYOffset;
+extern	int						gTerrainItemDeleteWindow_Far;
+extern	int						gTerrainItemDeleteWindow_Left;
+extern	int						gTerrainItemDeleteWindow_Near;
+extern	int						gTerrainItemDeleteWindow_Right;
+extern	int						gTerrainTileDepth;
+extern	int						gTerrainTileWidth;
 extern	long					gTerrainUnitDepth;
 extern	long					gTerrainUnitWidth;
 extern	NewObjectDefinitionType	gNewObjectDefinition;
@@ -122,8 +129,8 @@ extern	ObjNode*				gCurrentNode;
 extern	ObjNode*				gFirstNodePtr;
 extern	ObjNode*				gInventoryObject;
 extern	ObjNode*				gMyTimePortal;
-extern	ObjNode*				gPlayerNode[];
 extern	ObjNode*				gPlayerObj;
+extern	Pool*					gObjNodePool;
 extern	PrefsType				gGamePrefs;
 extern	Ptr						gTerrainHeightMapPtrs[];
 extern	Ptr						gTerrainPtr;
@@ -132,7 +139,7 @@ extern	QD3DSetupOutputType*	gGameViewInfoPtr;
 extern	RenderStats				gRenderStats;
 extern	SDL_Window*				gSDLWindow;
 extern	short					gAmbientEffect;
-extern	short					gNumCollisions;
+extern	int						gNumCollisions;
 extern	short					gNumEnemies;
 extern	short					gNumItems;
 extern	short					gNumLives;
@@ -161,9 +168,9 @@ extern	UInt16*					gTileDataPtr;
 extern	UInt16**				gTerrainHeightMapLayer;
 extern	UInt16**				gTerrainPathLayer;
 extern	UInt16**				gTerrainTextureLayer;
-extern	UInt32*					gCoverWindowPixPtr;
-extern	unsigned long			gScore;
-extern	unsigned long 			gInfobarUpdateBits;
+extern	UInt32*					gBackdropPixels;
+extern	uint32_t				gScore;
+extern	uint32_t				gInfobarUpdateBits;
 extern	WindowPtr				gCoverWindow;
 
 #ifdef __cplusplus

@@ -1,7 +1,8 @@
 /****************************/
 /*   	QD3D SUPPORT.C	    */
-/* (c)1997 Pangea Software  */
 /* By Brian Greenstone      */
+/* (c)1997 Pangea Software  */
+/* (c)2023 Iliyas Jorio     */
 /****************************/
 
 
@@ -29,13 +30,13 @@ static TQ3Area GetAdjustedPane(Rect paneClip);
 /*    VARIABLES      */
 /*********************/
 
-SDL_GLContext					gGLContext;
+SDL_GLContext					gGLContext = NULL;
 RenderStats						gRenderStats;
 
 GLuint 							gShadowGLTextureName = 0;
 
-float	gFramesPerSecond = DEFAULT_FPS;				// this is used to maintain a constant timing velocity as frame rates differ
-float	gFramesPerSecondFrac = 1.0f/DEFAULT_FPS;
+float	gFramesPerSecond = MIN_FPS;				// this is used to maintain a constant timing velocity as frame rates differ
+float	gFramesPerSecondFrac = 1.0f/MIN_FPS;
 
 float	gAdditionalClipping = 0;
 
@@ -53,8 +54,25 @@ static char				gDebugTextBuffer[1024];
 void QD3D_Boot(void)
 {
 				/* LET 'ER RIP! */
+
+	GAME_ASSERT_MESSAGE(gSDLWindow, "Gotta have a window to create a context");
+	GAME_ASSERT_MESSAGE(!gGLContext, "GL context already created!");
+
+	gGLContext = SDL_GL_CreateContext(gSDLWindow);									// also makes it current
+	GAME_ASSERT_MESSAGE(gGLContext, SDL_GetError());
 }
 
+
+/******************** QD3D: SHUTDOWN ***************************/
+
+void QD3D_Shutdown(void)
+{
+	if (gGLContext)
+	{
+		SDL_GL_DeleteContext(gGLContext);
+		gGLContext = NULL;
+	}
+}
 
 
 //=======================================================================================================
@@ -85,7 +103,7 @@ TQ3Vector3D			fillDirection2 = { -1, -1, .2 };
 	viewDef->view.paneClip.right 	= 0;
 	viewDef->view.paneClip.top 		= 0;
 	viewDef->view.paneClip.bottom 	= 0;
-	viewDef->view.backdropFit		= kCoverQuadFill;
+	viewDef->view.keepBackdropAspectRatio = true;
 
 	viewDef->styles.interpolation 	= kQ3InterpolationStyleVertex;
 	viewDef->styles.backfacing 		= kQ3BackfacingStyleRemove; 
@@ -130,7 +148,6 @@ QD3DSetupOutputType	*outputPtr;
 
 			/* CREATE & SET DRAW CONTEXT */
 
-	gGLContext = SDL_GL_CreateContext(gSDLWindow);									// also makes it current
 	GAME_ASSERT(gGLContext);
 
 				/* PASS BACK INFO */
@@ -138,10 +155,12 @@ QD3DSetupOutputType	*outputPtr;
 	outputPtr->paneClip = setupDefPtr->view.paneClip;
 	outputPtr->needScissorTest = setupDefPtr->view.paneClip.left != 0 || setupDefPtr->view.paneClip.right != 0
 								 || setupDefPtr->view.paneClip.bottom != 0 || setupDefPtr->view.paneClip.top != 0;
-	outputPtr->backdropFit = setupDefPtr->view.backdropFit;
+	outputPtr->keepBackdropAspectRatio = setupDefPtr->view.keepBackdropAspectRatio;
 	outputPtr->hither = setupDefPtr->camera.hither;				// remember hither/yon
 	outputPtr->yon = setupDefPtr->camera.yon;
 	outputPtr->fov = setupDefPtr->camera.fov;
+	outputPtr->viewportAspectRatio = 1;		// filled in later
+	outputPtr->clearColor = setupDefPtr->view.clearColor;
 
 	outputPtr->cameraPlacement.upVector				= setupDefPtr->camera.up;
 	outputPtr->cameraPlacement.pointOfInterest		= setupDefPtr->camera.to;
@@ -156,7 +175,7 @@ QD3DSetupOutputType	*outputPtr;
 
 			/* SET UP OPENGL RENDERER PROPERTIES NOW THAT WE HAVE A CONTEXT */
 
-	SDL_GL_SetSwapInterval(gGamePrefs.vsync ? 1 : 0);
+	Render_InitState();									// set up default GL state
 
 	CreateLights(&setupDefPtr->lights);
 
@@ -177,25 +196,8 @@ QD3DSetupOutputType	*outputPtr;
 	else
 		glDisable(GL_FOG);
 
-	glAlphaFunc(GL_GREATER, 0.4999f);
-
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	// Normalize normal vectors. Required so lighting looks correct on scaled meshes.
-	glEnable(GL_NORMALIZE);
-
-	glCullFace(GL_BACK);
-	glFrontFace(GL_CCW);									// CCW is front face
-
-	glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
-
-	Render_InitState();
-	Render_Alloc2DCover(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);
-
-	glClearColor(setupDefPtr->view.clearColor.r, setupDefPtr->view.clearColor.g, setupDefPtr->view.clearColor.b, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	CHECK_GL_ERROR();
+	Render_AllocBackdrop(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);	// creates GL texture for backdrop
+	Render_ClearBackdrop(0);									// avoid residual junk from previous backdrop
 }
 
 
@@ -213,16 +215,13 @@ QD3DSetupOutputType	*data;
 	data = *dataHandle;
 	GAME_ASSERT(data);										// see if this setup exists
 
-	Render_Dispose2DCover(); // Source port addition - release backdrop GL texture
+	Render_DisposeBackdrop();								// deletes GL texture for backdrop
 
 	if (gShadowGLTextureName != 0)
 	{
 		glDeleteTextures(1, &gShadowGLTextureName);
 		gShadowGLTextureName = 0;
 	}
-
-	SDL_GL_DeleteContext(gGLContext);						// dispose GL context
-	gGLContext = nil;
 
 	data->isActive = false;									// now inactive
 	
@@ -294,6 +293,13 @@ static void CreateLights(QD3DLightDefType *lightDefPtr)
 
 		glEnable(GL_LIGHT0+i);								// enable the light
 	}
+
+			/* KILL OTHER LIGHTS */
+
+	for (int i = lightDefPtr->numFillLights; i < MAX_FILL_LIGHTS; i++)
+	{
+		glDisable(GL_LIGHT0+i);
+	}
 }
 
 
@@ -306,47 +312,50 @@ void QD3D_DrawScene(QD3DSetupOutputType *setupInfo, void (*drawRoutine)(QD3DSetu
 {
 	GAME_ASSERT(setupInfo);
 	GAME_ASSERT(setupInfo->isActive);							// make sure it's legit
+	GAME_ASSERT(gGLContext);
 
+			/* CALC VIEWPORT DIMENSIONS */
+
+	SDL_GL_GetDrawableSize(gSDLWindow, &gWindowWidth, &gWindowHeight);
+	TQ3Area viewportPane = GetAdjustedPane(setupInfo->paneClip);
+	float viewportWidth = viewportPane.max.x - viewportPane.min.x;
+	float viewportHeight = viewportPane.max.y - viewportPane.min.y;
+	setupInfo->viewportAspectRatio = (viewportHeight < 1) ? (1.0f) : (viewportWidth / viewportHeight);
+
+			/* UPDATE CAMERA MATRICES */
+
+	CalcCameraMatrixInfo(setupInfo);
 
 			/* START RENDERING */
 
-	int mkc = SDL_GL_MakeCurrent(gSDLWindow, gGLContext);
-	GAME_ASSERT_MESSAGE(mkc == 0, SDL_GetError());
-
 	Render_StartFrame();
 
-	// Clip pane
+			/* DRAW BACKDROP */
+
 	if (setupInfo->needScissorTest)
 	{
-		// Render backdrop
-		Render_Draw2DCover(setupInfo->backdropFit);
-
-		// Set scissor
-		TQ3Area pane	= GetAdjustedPane(setupInfo->paneClip);
-		int paneWidth	= pane.max.x-pane.min.x;
-		int paneHeight	= pane.max.y-pane.min.y;
-		Render_SetViewport(true, pane.min.x, pane.min.y, paneWidth, paneHeight);
+		Render_DrawBackdrop(setupInfo->keepBackdropAspectRatio);
 	}
-	else
+	else if (gGamePrefs.force4x3 && (viewportPane.min.x != 0 || viewportPane.min.y != 0))
 	{
-		Render_SetViewport(false, 0, 0, gWindowWidth, gWindowHeight);
+		Render_DrawBackdrop(true);		// Forces clearing pillarbox/letterbox zones
 	}
 
-			/* PREPARE FRUSTUM PLANES FOR SPHERE VISIBILITY CHECKS */
+			/* ENTER 3D VIEWPORT */
+
+	Render_SetViewportClearColor(setupInfo->clearColor);
+	Render_SetViewport(viewportPane);
+
+			/* PREPARE FRUSTUM CULLING PLANES */
 
 	UpdateFrustumPlanes();
 
-
-			/***************/
-			/* RENDER LOOP */
-			/***************/
+			/* 3D SCENE RENDER LOOP */
 
 	if (drawRoutine)
 		drawRoutine(setupInfo);
 
-			/******************/
 			/* DONE RENDERING */
-			/*****************/
 
 	Render_EndFrame();
 
@@ -399,46 +408,66 @@ void QD3D_MoveCameraFromTo(QD3DSetupOutputType *setupInfo, TQ3Vector3D *moveVect
 //=============================== MISC ==================================================================
 //=======================================================================================================
 
+/************** QD3D REFRESH WINDOW SIZE *****************/
+
+void QD3D_OnWindowResized(void)
+{
+	SDL_GL_GetDrawableSize(gSDLWindow, &gWindowWidth, &gWindowHeight);
+}
+
 /************** QD3D CALC FRAMES PER SECOND *****************/
 
-void	QD3D_CalcFramesPerSecond(void)
+void QD3D_CalcFramesPerSecond(void)
 {
-UnsignedWide	wide;
-unsigned long	now;
-static	unsigned long then = 0;
+	static uint64_t performanceFrequency = 0;
+	static uint64_t prevTime = 0;
+	uint64_t currTime;
 
-			/* DO REGULAR CALCULATION */
-
-	Microseconds(&wide);
-	now = wide.lo;
-	if (then != 0)
+	if (performanceFrequency == 0)
 	{
-		gFramesPerSecond = 1000000.0f/(float)(now-then);
-		if (gFramesPerSecond < DEFAULT_FPS)			// (avoid divide by 0's later)
-			gFramesPerSecond = DEFAULT_FPS;
+		performanceFrequency = SDL_GetPerformanceFrequency();
 	}
-	else
-		gFramesPerSecond = DEFAULT_FPS;
 
-	gFramesPerSecondFrac = 1.0f/gFramesPerSecond;	// calc fractional for multiplication
+	slow_down:
+	currTime = SDL_GetPerformanceCounter();
+	uint64_t deltaTime = currTime - prevTime;
 
-	then = now;										// remember time
-
-	static int holdFramerateCap = 0;
-
-
-			/* CAP FRAME RATE */
-
-	if (gFramesPerSecond > 200 || holdFramerateCap > 0)
+	if (deltaTime <= 0)
 	{
-		SDL_Delay(5);
-		// Keep framerate cap for a while to avoid jitter in game physics
-		holdFramerateCap = 10;
+		gFramesPerSecond = MIN_FPS;						// avoid divide by 0
 	}
 	else
 	{
-		holdFramerateCap--;
+		gFramesPerSecond = performanceFrequency / (float)(deltaTime);
+
+		if (gFramesPerSecond > MAX_FPS)					// keep from cooking the GPU
+		{
+			if (gFramesPerSecond - MAX_FPS > 1000)		// try to sneak in some sleep if we have 1 ms to spare
+			{
+				SDL_Delay(1);
+			}
+			goto slow_down;
+		}
+
+		if (gFramesPerSecond < MIN_FPS)					// (avoid divide by 0's later)
+		{
+			gFramesPerSecond = MIN_FPS;
+		}
 	}
+
+	// In debug builds, speed up with KP_PLUS
+#if _DEBUG
+	if (GetSDLKeyState(SDL_SCANCODE_KP_PLUS))
+#else
+	if (GetSDLKeyState(SDL_SCANCODE_GRAVE) && GetSDLKeyState(SDL_SCANCODE_KP_PLUS))
+#endif
+	{
+		gFramesPerSecond = MIN_FPS;
+	}
+
+	gFramesPerSecondFrac = 1.0f / gFramesPerSecond;		// calc fractional for multiplication
+
+	prevTime = currTime;								// reset for next time interval
 
 
 			/* UPDATE DEBUG TEXT */
@@ -450,14 +479,17 @@ static	unsigned long then = 0;
 		if (ticksElapsed >= gDebugTextUpdateInterval)
 		{
 			float fps = 1000 * gDebugTextFrameAccumulator / (float)ticksElapsed;
-			snprintf(
+			SDL_snprintf(
 					gDebugTextBuffer, sizeof(gDebugTextBuffer),
-					"%s %s - fps:%d tris:%d meshq:%d - x:%.0f z:%.0f",
-					PRO_MODE ? "Nanosaur Extreme" : "Nanosaur",
+					"%s%s - %dfps %dt %dm %dn %dp %dK x:%.0f z:%.0f",
+					PRO_MODE ? "NanoExtreme" : "Nanosaur",
 					PROJECT_VERSION,
 					(int)round(fps),
 					gRenderStats.trianglesDrawn,
 					gRenderStats.meshQueueSize,
+					gObjNodePool? Pool_Size(gObjNodePool): 0,
+					(int)Pomme_GetNumAllocs(),
+					(int)(Pomme_GetHeapSize()/1024),
 					gMyCoord.x,
 					gMyCoord.z
 			);
@@ -529,7 +561,11 @@ void MakeShadowTexture(void)
 			width,
 			height,
 			GL_BGRA,
+#if !(__BIG_ENDIAN__)
 			GL_UNSIGNED_INT_8_8_8_8,
+#else
+			GL_UNSIGNED_INT_8_8_8_8_REV,
+#endif
 			pixelData,
 			0
 			);
@@ -538,11 +574,13 @@ void MakeShadowTexture(void)
 }
 
 
-#pragma mark ---------- source port additions -------------
+#pragma mark -
 
 static TQ3Area GetAdjustedPane(Rect paneClip)
 {
 	TQ3Area pane;
+	TQ3Vector2D scale;
+	TQ3Vector2D offset;
 
 	pane.min.x = paneClip.left;					// set bounds?
 	pane.max.x = GAME_VIEW_WIDTH - paneClip.right;
@@ -554,44 +592,31 @@ static TQ3Area GetAdjustedPane(Rect paneClip)
 	pane.min.y += gAdditionalClipping*.75f;
 	pane.max.y -= gAdditionalClipping*.75f;
 
-	pane.min.x *= gWindowWidth	/ (float)(GAME_VIEW_WIDTH);	// scale clip pane to window size
-	pane.max.x *= gWindowWidth	/ (float)(GAME_VIEW_WIDTH);
-	pane.min.y *= gWindowHeight	/ (float)(GAME_VIEW_HEIGHT);
-	pane.max.y *= gWindowHeight	/ (float)(GAME_VIEW_HEIGHT);
+	if (gGamePrefs.force4x3)
+	{
+		TQ3Vector2D fit = FitRectKeepAR(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT, gWindowWidth, gWindowHeight);
+		scale.x = fit.x / (float) GAME_VIEW_WIDTH;
+		scale.y = fit.y / (float) GAME_VIEW_HEIGHT;
+		offset.x = (gWindowWidth  - fit.x) / 2;
+		offset.y = (gWindowHeight - fit.y) / 2;
+	}
+	else
+	{
+		scale.x = gWindowWidth	/ (float) GAME_VIEW_WIDTH;
+		scale.y = gWindowHeight	/ (float) GAME_VIEW_HEIGHT;
+		offset.x = 0;
+		offset.y = 0;
+	}
+
+	pane.min.x *= scale.x;	// scale clip pane to window size
+	pane.max.x *= scale.x;
+	pane.min.y *= scale.y;
+	pane.max.y *= scale.y;
+
+	pane.min.x += offset.x;
+	pane.max.x += offset.x;
+	pane.min.y += offset.y;
+	pane.max.y += offset.y;
 
 	return pane;
-}
-
-// Called when the game window gets resized.
-// Adjusts the clipping pane and camera aspect ratio.
-void QD3D_OnWindowResized(int windowWidth, int windowHeight)
-{
-	gWindowWidth	= windowWidth;
-	gWindowHeight	= windowHeight;
-
-	if (!gGameViewInfoPtr)
-		return;
-
-	CalcCameraMatrixInfo(gGameViewInfoPtr);
-}
-
-
-
-#pragma mark -
-
-float QD3D_GetCurrentViewportAspectRatio(const QD3DSetupOutputType *setupInfo)
-{
-	int	t,b,l,r;
-	t = setupInfo->paneClip.top;
-	b = setupInfo->paneClip.bottom;
-	l = setupInfo->paneClip.left;
-	r = setupInfo->paneClip.right;
-
-	int w = gWindowWidth	- l		- r;
-	int h = gWindowHeight	- t		- b;
-
-	if (h == 0)
-		return 1;
-	else
-		return (float)w / (float)h;
 }

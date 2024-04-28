@@ -233,8 +233,14 @@ static	void(*myMoveTable[])(ObjNode *) =
 		gMyTimePortalTimer -= gFramesPerSecondFrac;
 		if (gMyTimePortalTimer <= 0.0f)
 		{
-			theNode->StatusBits &= ~STATUS_BIT_HIDDEN;				// un-hide me
-			PlayEffect_Parms(EFFECT_PORTAL,FULL_CHANNEL_VOLUME,kMiddleC+2);
+			gMyTimePortalTimer = 0;
+
+			if (gCameraMode != CAMERA_MODE_FIRSTPERSON)
+			{
+				theNode->StatusBits &= ~STATUS_BIT_HIDDEN;				// un-hide me
+			}
+
+			PlayEffect_Parms(EFFECT_PORTAL,FULL_CHANNEL_VOLUME,kMiddleC+2);			
 		}
 		UpdatePlayer(theNode);
 		return;
@@ -257,6 +263,13 @@ static	void(*myMoveTable[])(ObjNode *) =
 
 	myMoveTable[theNode->Skeleton->AnimNum](theNode);
 
+		/* ALWAYS UPDATE MY SKELETON EVEN IF I'M HIDDEN FOR FIRST-PERSON */
+
+	if (theNode->StatusBits & STATUS_BIT_HIDDEN)
+	{
+		GetModelCurrentPosition(theNode->Skeleton);
+		UpdateSkinnedGeometry(theNode);
+	}
 }
 
 
@@ -791,13 +804,11 @@ static void UpdatePlayer(ObjNode *theNode)
 
 	if (gMyTimePortal)
 	{
-		if (!(theNode->StatusBits & STATUS_BIT_HIDDEN))
+		if (gMyTimePortalTimer <= 0.0f
+			&& theNode->StatusBits & STATUS_BIT_ONGROUND)
 		{
-			if (theNode->StatusBits & STATUS_BIT_ONGROUND)
-			{
-				DeleteObject(gMyTimePortal);
-				gMyTimePortal = nil;
-			}
+			DeleteObject(gMyTimePortal);
+			gMyTimePortal = nil;
 		}
 	}
 	else
@@ -828,7 +839,6 @@ static void UpdatePlayer(ObjNode *theNode)
 
 static Boolean DoPlayerCollisionDetect(ObjNode *theNode)
 {
-short	i;
 ObjNode	*hitObj;
 unsigned long	ctype;
 float		y;
@@ -858,8 +868,8 @@ UInt8		sides;
 			/******************************/
 			/* SCAN FOR INTERESTING STUFF */
 			/******************************/
-
-	for (i=0; i < gNumCollisions; i++)
+			
+	for (int i = 0; i < gNumCollisions; i++)						
 	{
 		if (gCollisionList[i].type == COLLISION_TYPE_OBJ)
 		{
@@ -1012,6 +1022,7 @@ static void KillPlayer(ObjNode *theNode)
 	if (!gPlayerGotKilledFlag)
 	{
 		StopJetPack(theNode);
+		theNode->StatusBits &= ~STATUS_BIT_HIDDEN;				// un-hide me -- camera gets reset to third-person mode
 		MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_DEATH,1.5);
 		gPlayerGotKilledFlag = true;
 	}

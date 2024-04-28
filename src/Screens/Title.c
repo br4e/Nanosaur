@@ -69,13 +69,13 @@ TQ3Point3D		cameraFrom = { 110, 90, 190.0 };
 	viewDef.camera.from 			= cameraFrom;
 #endif
 	
-	if (!gGamePrefs.canDoFog)		// if no fog possible, then bg is black
+	if (!gGamePrefs.whiteSky)
 	{
 		viewDef.view.clearColor.r = 0;
 		viewDef.view.clearColor.g = 0;
 		viewDef.view.clearColor.b = 0;
 	}
-	else							// set fog since I think it'll work
+	else
 	{
 		viewDef.view.clearColor.r = 
 		viewDef.view.clearColor.g = 
@@ -339,13 +339,8 @@ static void Slideshow(const struct SlideshowEntry* slides)
 {
 	FSSpec spec;
 
-	SDL_GLContext glContext = SDL_GL_CreateContext(gSDLWindow);
-	GAME_ASSERT(glContext);
-	
-	SDL_GL_SetSwapInterval(gGamePrefs.vsync ? 1 : 0);
-	
 	Render_InitState();
-	Render_Alloc2DCover(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);
+	Render_AllocBackdrop(GAME_VIEW_WIDTH, GAME_VIEW_HEIGHT);
 
 	for (int i = 0; slides[i].imagePath != NULL; i++)
 	{
@@ -366,8 +361,14 @@ static void Slideshow(const struct SlideshowEntry* slides)
 			slide->postDrawCallback();
 		}
 
-		uint8_t* clearColor = (uint8_t*)gCoverWindowPixPtr;
-		glClearColor(clearColor[1]/255.0f, clearColor[2]/255.0f, clearColor[3]/255.0f, 1.0f);
+		uint8_t* clearColor = (uint8_t*)gBackdropPixels;
+		Render_SetBackdropClearColor((TQ3ColorRGBA)
+			{
+				.r = clearColor[1]/255.0f,
+				.g = clearColor[2]/255.0f,
+				.b = clearColor[3]/255.0f,
+				.a = 1.0f,
+			});
 
 		UpdateInput();
 
@@ -393,7 +394,7 @@ static void Slideshow(const struct SlideshowEntry* slides)
 
 			if (!promptShownYet && slideAge > 2)
 			{
-				MoveTo(490, 480-4);
+				MoveTo(494, 480-4);
 				RGBBackColor2(0);
 				RGBForeColor2(0xFFFFFF);
 				DrawStringC(" Hit SPACE to continue ");
@@ -402,12 +403,10 @@ static void Slideshow(const struct SlideshowEntry* slides)
 
 			UpdateInput();
 			DoSoundMaintenance();
-
-			Render_StartFrame();
-			Render_Draw2DCover(kCoverQuadFit);
-
 			QD3D_CalcFramesPerSecond(); // required to properly cap the framerate
 
+			Render_StartFrame();
+			Render_DrawBackdrop(true);
 			Render_EndFrame();
 			SDL_GL_SwapWindow(gSDLWindow);
 
@@ -420,8 +419,7 @@ static void Slideshow(const struct SlideshowEntry* slides)
 
 	Render_FreezeFrameFadeOut();
 
-	Render_Dispose2DCover();
-	SDL_GL_DeleteContext(glContext);
+	Render_DisposeBackdrop();
 }
 
 
@@ -432,32 +430,19 @@ static void Slideshow(const struct SlideshowEntry* slides)
 
 static void ShowCharity_SourcePortVersionOverlay(void)
 {
-    RGBBackColor2(0xA5A5A5);
-    RGBForeColor2(0x000000);
-    MoveTo(8, 16);
-    DrawStringC(PROJECT_VERSION);
-}
-
-static void ShowCharity_SourcePortCreditOverlay(void)
-{
-	RGBBackColor2(0xA5A5A5);
-	MoveTo(8, 480-4-14);
-	RGBForeColor2(0xA50808);
-	DrawStringC("ENHANCED UPDATE:   ");
-	ForeColor(blackColor);
-	DrawStringC("Iliyas Jorio");
-	MoveTo(8, 480-4);
+	RGBBackColor2(PRO_MODE? 0xA0A0A0: 0xA5A5A5);
 	RGBForeColor2(0x606060);
-	DrawStringC("https://github.com/jorio/nanosaur");
+	MoveTo(4, 480-4);
+	DrawStringC("Version " PROJECT_VERSION);
 }
 
 void ShowCharity(void)
 {
-	const char* firstImage = PRO_MODE ? ":images:Boot1Pro.tga" : ":images:Boot1.tga";
+	const char* firstImage = PRO_MODE ? ":Images:Boot1Pro.tga" : ":Images:Boot1.tga";
 
 	const struct SlideshowEntry slides[] = {
 			{ firstImage, ShowCharity_SourcePortVersionOverlay },
-			{ ":images:Boot2.tga", ShowCharity_SourcePortCreditOverlay },
+			{ ":Images:Boot2.tga", NULL },
 			{ NULL, NULL },
 	};
 	Slideshow(slides);
@@ -466,11 +451,26 @@ void ShowCharity(void)
 
 /*************** SHOW HELP **********************/
 
+static void ShowHelp_TechInfoOverlay(void)
+{
+	RGBForeColor2(0x404040);
+	RGBBackColor2(0x9e9e9e);
+
+	int LH = 14;
+
+	int x = 4;
+	int y = 480 - 4 - LH * 3;
+
+	MoveTo(x, y); DrawStringC("Nanosaur v" PROJECT_VERSION " / "); DrawStringC(SDL_GetCurrentVideoDriver());
+	y += LH; MoveTo(x, y); DrawStringC(SDL_GetRevision());
+	y += LH; MoveTo(x, y); DrawStringC("OpenGL "); DrawStringC((const char*) glGetString(GL_VERSION));
+	y += LH; MoveTo(x, y); DrawStringC((const char*) glGetString(GL_RENDERER));
+}
+
 void ShowHelp(void)
 {
 	const struct SlideshowEntry slides[] = {
-			{ ":images:Help1.tga", NULL },
-			{ ":images:Help2.tga", NULL },
+			{ ":Images:Help1.tga", ShowHelp_TechInfoOverlay },
 			{ NULL, NULL },
 	};
 	Slideshow(slides);

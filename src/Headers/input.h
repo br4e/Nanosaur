@@ -28,7 +28,8 @@ enum
 	kNeed_TurnRight,
 	kNeed_Jump,
 	kNeed_Attack,
-	kNeed_AttackMode,
+	kNeed_PrevWeapon,
+	kNeed_NextWeapon,
 	kNeed_PickUp,
 	kNeed_JetUp,
 	kNeed_JetDown,
@@ -40,7 +41,6 @@ enum
 	kNeed_ToggleGPS,
 	kNeed_ToggleMusic,
 	kNeed_ToggleAmbient,
-	kNeed_ToggleFullscreen,
 	NUM_REMAPPABLE_NEEDS,
 
 	// ^^^ REMAPPABLE
@@ -66,6 +66,7 @@ void UpdateInput(void);
 
 bool GetNewSDLKeyState(unsigned short sdlScanCode);
 bool GetSDLKeyState(unsigned short sdlScanCode);
+bool IsCmdQPressed(void);
 bool UserWantsOut(void);
 bool AreAnyNewKeysPressed(void);
 

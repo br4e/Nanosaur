@@ -10,7 +10,6 @@
 /***************/
 
 #include "game.h"
-#include <stdio.h>  // snprintf
 
 
 /****************************/
@@ -58,9 +57,6 @@ Boolean				gSongPlayingFlag = false;
 Boolean				gResetSong = false;
 Boolean				gLoopSongFlag = true;
 
-
-long	gOriginalSystemVolume,gCurrentSystemVolume;
-
 Boolean			gMuteMusicFlag = false;
 
 		/*****************/
@@ -102,13 +98,6 @@ short	gAmbientEffect = -1;
 void InitSoundTools(void)
 {
 OSErr		iErr;
-
-			/* SET SYSTEM VOLUME INFO */
-			
-	GetDefaultOutputVolume(&gOriginalSystemVolume);		
-	gOriginalSystemVolume &= 0xffff;	
-	gCurrentSystemVolume = gOriginalSystemVolume;
-
 
 	gMaxChannels = 0;
 
@@ -158,7 +147,7 @@ OSErr err;
 		return;
 	}
 
-	snprintf(path, sizeof(path), ":Audio:SoundBank:%s.aiff", kEffectNames[effectNum]);
+	SDL_snprintf(path, sizeof(path), ":Audio:SoundBank:%s.aiff", kEffectNames[effectNum]);
 
 	err = FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, path, &spec);
 	GAME_ASSERT_MESSAGE(err == noErr, path);
@@ -559,6 +548,20 @@ OSErr	myErr;
 	return(theChan);									// return channel #	
 }
 
+
+/*************** PAUSE ALL SOUND CHANNELS **************/
+
+void PauseAllChannels(Boolean pause)
+{
+	SndCommand cmd = { .cmd = pause ? pommePausePlaybackCmd : pommeResumePlaybackCmd };
+
+	for (int c = 0; c < gMaxChannels; c++)
+	{
+		SndDoImmediate(gSndChannel[c], &cmd);
+	}
+
+	SndDoImmediate(gMusicChannel, &cmd);
+}
 
 
 /*************** CHANGE CHANNEL FREQUENCY **************/

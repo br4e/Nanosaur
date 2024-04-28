@@ -154,7 +154,6 @@ void Exit2D(void)
 
 static void MoveToPreferredDisplay(void)
 {
-#if !(__APPLE__)
 	int currentDisplay = SDL_GetWindowDisplayIndex(gSDLWindow);
 
 	if (currentDisplay != gGamePrefs.preferredDisplay)
@@ -164,13 +163,15 @@ static void MoveToPreferredDisplay(void)
 				SDL_WINDOWPOS_CENTERED_DISPLAY(gGamePrefs.preferredDisplay),
 				SDL_WINDOWPOS_CENTERED_DISPLAY(gGamePrefs.preferredDisplay));
 	}
-#endif
 }
 
 /*********************** SET FULLSCREEN MODE **********************/
 
 void SetFullscreenMode(bool enforceDisplayPref)
 {
+#if OSXPPC
+	#warning Fullscreen mode disabled for now on OSXPPC
+#else
 	if (!gGamePrefs.fullscreen)
 	{
 		SDL_SetWindowFullscreen(gSDLWindow, 0);
@@ -182,7 +183,6 @@ void SetFullscreenMode(bool enforceDisplayPref)
 	}
 	else
 	{
-#if !(__APPLE__)
 		if (enforceDisplayPref)
 		{
 			int currentDisplay = SDL_GetWindowDisplayIndex(gSDLWindow);
@@ -194,16 +194,16 @@ void SetFullscreenMode(bool enforceDisplayPref)
 				MoveToPreferredDisplay();
 			}
 		}
-#endif
 
 		// Enter fullscreen mode
 		SDL_SetWindowFullscreen(gSDLWindow, SDL_WINDOW_FULLSCREEN_DESKTOP);
 	}
+#endif
 
 	// Ensure the clipping pane gets resized properly after switching in or out of fullscreen mode
-	int width, height;
-	SDL_GetWindowSize(gSDLWindow, &width, &height);
-	QD3D_OnWindowResized(width, height);
+	QD3D_OnWindowResized();
+
+	SDL_GL_SetSwapInterval(gGamePrefs.vsync ? 1 : 0);
 
 	SDL_ShowCursor(gGamePrefs.fullscreen? 0: 1);
 }

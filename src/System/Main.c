@@ -51,7 +51,7 @@ FSSpec		gDataSpec;
 void InitDefaultPrefs(void)
 {
 	memset(&gGamePrefs, 0, sizeof(gGamePrefs));
-	snprintf(gGamePrefs.magic, sizeof(gGamePrefs.magic), "%s", PREFS_MAGIC);
+	SDL_snprintf(gGamePrefs.magic, sizeof(gGamePrefs.magic), "%s", PREFS_MAGIC);
 
 	gGamePrefs.highQualityTextures = true;			// set the defaults
 	gGamePrefs.canDoFog = true;
@@ -65,6 +65,8 @@ void InitDefaultPrefs(void)
 	gGamePrefs.extreme = false;
 	gGamePrefs.music = true;
 	gGamePrefs.ambientSounds = true;
+	gGamePrefs.nanosaurTeethFix = true;
+	gGamePrefs.whiteSky = true;
 
 	memcpy(gGamePrefs.keys, kDefaultKeyBindings, sizeof(gGamePrefs.keys));
 	_Static_assert(sizeof(kDefaultKeyBindings) == sizeof(gGamePrefs.keys), "size mismatch: default keybindings / prefs keybinings");
@@ -149,13 +151,15 @@ TQ3ColorRGB		c2 = { 1, .9, .6 };
 	viewDef.lights.fillBrightness[0] = 1.2;
 	viewDef.lights.fillBrightness[1] = .4;
 
-	if (!gGamePrefs.canDoFog)		// if no fog possible, then bg is black
+	viewDef.view.keepBackdropAspectRatio = gGamePrefs.force4x3;
+
+	if (!gGamePrefs.whiteSky)
 	{
 		viewDef.view.clearColor.r = 0;
 		viewDef.view.clearColor.g = 0;
 		viewDef.view.clearColor.b = 0;
 	}
-	else							// set fog since I think it'll work
+	else
 	{
 		viewDef.view.clearColor.r = .95;
 		viewDef.view.clearColor.g = .95;
@@ -179,7 +183,7 @@ TQ3ColorRGB		c2 = { 1, .9, .6 };
 
 	LoadLevelArt(LEVEL_NUM_0);
 
-	QD3D_InitParticles();	
+	QD3D_InitShards();	
 	InitWeaponManager();
 	InitItemsManager();
 	InitMyInventory();	
@@ -210,13 +214,13 @@ TQ3ColorRGB		c2 = { 1, .9, .6 };
 static void CleanupLevel(void)
 {
 	StopAllEffectChannels();
+	Render_FreezeFrameFadeOut();
 	DeleteAllObjects();
 	FreeAllSkeletonFiles(-1);
 	DisposeTerrain();
 	DisposeSpriteGroup(0);
-	QD3D_DisposeParticles();
+	QD3D_DisposeShards();
 	DeleteAll3DMFGroups();
-	Render_FreezeFrameFadeOut();
 	QD3D_DisposeWindowSetup(&gGameViewInfoPtr);
 }
 
@@ -254,7 +258,7 @@ FSSpec	spec;
 				
 		CalcPlayerKeyControls();
 		MoveObjects();
-		QD3D_MoveParticles();
+		QD3D_MoveShards();
 
 				/* SPECIFIC MAINTENANCE */
 				
@@ -273,8 +277,12 @@ FSSpec	spec;
 				
 			/* SEE IF PAUSE GAME */
 
-		if (GetNewNeedState(kNeed_UIPause))						// see if pause/abort
+		if (GetNewNeedState(kNeed_UIPause)						// see if pause/abort
+			|| IsCmdQPressed())
+		{
 			DoPaused();
+		}
+
 
 			/* CHECK CHEAT KEYS */
 			
@@ -327,14 +335,14 @@ FSSpec	spec;
 	
 	if (gWonGameFlag)
 	{
-		FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":movies:Win.mov", &spec);
+		FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":Movies:Win.mov", &spec);
 		PlayAMovie(&spec);
 	}
 	
 			/* PLAY LOSE MOVIE */
 	else
 	{
-		FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":movies:Lose.mov", &spec);
+		FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":Movies:Lose.mov", &spec);
 		PlayAMovie(&spec);
 	}
 

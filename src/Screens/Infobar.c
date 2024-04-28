@@ -16,7 +16,7 @@
 /*    PROTOTYPES            */
 /****************************/
 
-static void PrintNumber(unsigned long num, short numDigits, long x, long y);
+static void PrintNumber(unsigned int num, int numDigits, int x, int y);
 static void ShowTimeRemaining(void);
 static void ShowHealth(void);
 static void UpdateInfobarIcon(ObjNode *theNode);
@@ -75,8 +75,9 @@ enum
 /*    VARIABLES      */
 /*********************/
 
-unsigned long 	gInfobarUpdateBits = 0;
-unsigned long 	gScore;
+Boolean			gGamePaused = false;
+uint32_t		gInfobarUpdateBits = 0;
+uint32_t		gScore;
 short			gNumLives;
 float			gFuel;
 float			gTimeRemaining;
@@ -179,7 +180,7 @@ unsigned long	bits;
 		/* SHOW SCORE */
 
 	if (bits & UPDATE_SCORE)
-		PrintNumber(gScore,8, SCORE_X,SCORE_Y);
+		PrintNumber(gScore, 8, SCORE_X,SCORE_Y);
 
 
 		/* SHOW FUEL GAUGE */
@@ -217,22 +218,18 @@ unsigned long	bits;
 
 /********************* NEXT ATTACK MODE ***********************/
 
-void NextAttackMode(void)
+static void IncrementAttackMode(int delta)
 {
-short	i;
-
 			/* SCAN FOR NEXT AVAILABLE ATTACK MODE */
 
-	i = gCurrentAttackMode;
+	int i = gCurrentAttackMode;
 
 	do
 	{
-		if (++i >= NUM_ATTACK_MODES)						// see if wrap around
-			i = 0;
+		i = PositiveModulo(i + delta, NUM_ATTACK_MODES);
 
 		if (gPossibleAttackModes[i])						// can I do this one?
 			break;
-
 	}while(i !=	gCurrentAttackMode);
 
 
@@ -244,28 +241,32 @@ short	i;
 		gInfobarUpdateBits |= UPDATE_WEAPONICON;
 		PlayEffect(EFFECT_SELECT);		// play sound
 	}
-
 }
 
+void NextAttackMode(void)
+{
+	IncrementAttackMode(1);
+}
+
+void PreviousAttackMode(void)
+{
+	IncrementAttackMode(-1);
+}
 
 /****************** PRINT NUMBER ******************/
 
-static void PrintNumber(unsigned long num, short numDigits, long x, long y)
+static void PrintNumber(unsigned int num, int numDigits, int x, int y)
 {
-unsigned long digit;
-short i;
-
 	x += NUMBERS_XOFF;
 	y += NUMBERS_YOFF;
 
-	for (i = 0; i < numDigits; i++)
+	for (int i = 0; i < numDigits; i++)
 	{
-		digit = num % 10;				// get digit value
+		int digit = num % 10;				// get digit value
 		num /= 10;
 		DrawSpriteFrameToScreen(SPRITE_GROUP_INFOBAR, INFOBAR_FRAMENUM_0+digit, x, y);
 		x -= NUMBERS_WIDTH;
 	}
-
 }
 
 
@@ -368,12 +369,10 @@ void DoPaused(void)
 ObjNode	*resume,*quit;
 Byte	selected = 0;
 float	fluc = 0;
-Boolean	toggleMusic = !gMuteMusicFlag;
 
-	if (toggleMusic)
-		ToggleMusic();								// pause music
+	gGamePaused = true;
 
-	Pomme_PauseAllChannels(true);					// Source port addition: pause all looping channels
+	PauseAllChannels(true);
 
 			/***************/
 			/* MAKE RESUME */
@@ -410,6 +409,12 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 				/* SEE IF CHANGE SELECT */
 
 		UpdateInput();
+
+		if (IsCmdQPressed())
+		{
+			CleanQuit();
+		}
+
 		if (GetNewNeedState(kNeed_UIUp) && (selected > 0))
 		{
 			selected = 0;
@@ -443,6 +448,8 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 		}
 		UpdateInfobarIcon(resume);
 		UpdateInfobarIcon(quit);
+		if (gGPSObj)
+			MoveGPS(gGPSObj);		// force GPS in upper-right corner even if window gets resized
 
 		QD3D_DrawScene(gGameViewInfoPtr,DrawTerrain);
 	}
@@ -452,12 +459,10 @@ Boolean	toggleMusic = !gMuteMusicFlag;
 
 	DeleteObject(quit);
 	DeleteObject(resume);
+	PauseAllChannels(false);
 
-	if (toggleMusic)
-		ToggleMusic();										// restart music
-
-	Pomme_PauseAllChannels(false);						// Source port addition: unpause looping channels
-
+	gGamePaused = false;
+	
 	if (selected == 1)									// see if want out
 	{
 		gGameOverFlag = true;
@@ -588,7 +593,11 @@ static TQ3Point3D				points[4] = { { -GPS_DISPLAY_SIZE,  GPS_DISPLAY_SIZE, 0 },
 			GPS_MAP_TEXTURE_SIZE,
 			GPS_MAP_TEXTURE_SIZE,
 			GL_BGRA,
+#if !(__BIG_ENDIAN__)
 			GL_UNSIGNED_INT_8_8_8_8,
+#else
+			GL_UNSIGNED_INT_8_8_8_8_REV,
+#endif
 			GetPixBaseAddr(GetGWorldPixMap(gGPSGWorld)),
 			kRendererTextureFlags_ClampBoth);
 	mesh->glTextureName = textureName;
@@ -771,7 +780,11 @@ Boolean					forceUpdate = false;
 				GPS_MAP_TEXTURE_SIZE,
 				GPS_MAP_TEXTURE_SIZE,
 				GL_BGRA,
+#if !(__BIG_ENDIAN__)
 				GL_UNSIGNED_INT_8_8_8_8,
+#else
+				GL_UNSIGNED_INT_8_8_8_8_REV,
+#endif
 				GetPixBaseAddr(GetGWorldPixMap(gGPSGWorld)));
 		CHECK_GL_ERROR();
 
@@ -780,10 +793,19 @@ Boolean					forceUpdate = false;
 		gOldGPSCoordY = y;
 	}
 
-
-			/* UPDATE IT IN THE INFOBAR */
+			/* ORIENT GPS SO UP == PLAYER'S DIRECTION */
 
 	theNode->Rot.z = -gPlayerObj->Rot.y;
+
+			/* PIN GPS TO UPPER-RIGHT CORNER OF 3D VIEWPORT */
+
+	Rect paneClip = gGameViewInfoPtr->paneClip;
+	float originalAR = (float)(GAME_VIEW_WIDTH - paneClip.left - paneClip.right) / (float)(GAME_VIEW_HEIGHT - paneClip.top - paneClip.bottom);
+	float viewportAR = gGameViewInfoPtr->viewportAspectRatio;
+	float metaAR = viewportAR / originalAR;
+	theNode->Coord.x = 11.5f * metaAR - 3.1875f;	// to minimize jitter, these floats come out to "round" IEEE-754 representations
+
+			/* UPDATE TRANSFORM MATRIX */
 
 	UpdateInfobarIcon(theNode);
 }

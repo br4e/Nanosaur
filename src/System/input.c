@@ -1,7 +1,8 @@
 /****************************/
 /*     INPUT.C			    */
-/* (c)1997 Pangea Software  */
 /* By Brian Greenstone      */
+/* (c)1997 Pangea Software  */
+/* (c)2023 Iliyas Jorio     */
 /****************************/
 
 
@@ -16,14 +17,16 @@
 /*     PROTOTYPES     */
 /**********************/
 
-SDL_GameController	*gSDLController = NULL;
-SDL_JoystickID		gSDLJoystickInstanceID = -1;		// ID of the joystick bound to gSDLController
+typedef uint8_t KeyState;
 
-Byte				gRawKeyboardState[SDL_NUM_SCANCODES];
+static SDL_GameController	*gSDLController = NULL;
+static SDL_JoystickID		gSDLJoystickInstanceID = -1;		// ID of the joystick bound to gSDLController
+
+static KeyState		gRawKeyboardState[SDL_NUM_SCANCODES];
 bool				gAnyNewKeysPressed = false;
 char				gTextInput[SDL_TEXTINPUTEVENT_TEXT_SIZE];
 
-Byte				gNeedStates[NUM_CONTROL_NEEDS];
+static KeyState		gNeedStates[NUM_CONTROL_NEEDS];
 
 
 
@@ -33,16 +36,18 @@ Byte				gNeedStates[NUM_CONTROL_NEEDS];
 
 enum
 {
-	KEYSTATE_OFF		= 0b00,
-	KEYSTATE_UP			= 0b01,
+	KEYSTATE_ACTIVE_BIT		= 0b001,
+	KEYSTATE_CHANGE_BIT		= 0b010,
+	KEYSTATE_IGNORE_BIT		= 0b100,
 
-	KEYSTATE_PRESSED	= 0b10,
-	KEYSTATE_HELD		= 0b11,
-
-	KEYSTATE_ACTIVE_BIT	= 0b10,
+	KEYSTATE_OFF			= 0b000,
+	KEYSTATE_PRESSED		= KEYSTATE_ACTIVE_BIT | KEYSTATE_CHANGE_BIT,
+	KEYSTATE_HELD			= KEYSTATE_ACTIVE_BIT,
+	KEYSTATE_UP				= KEYSTATE_OFF | KEYSTATE_CHANGE_BIT,
+	KEYSTATE_IGNOREHELD		= KEYSTATE_OFF | KEYSTATE_IGNORE_BIT,
 };
 
-#define JOYSTICK_DEAD_ZONE .1f
+#define JOYSTICK_DEAD_ZONE .33f
 #define JOYSTICK_DEAD_ZONE_SQUARED (JOYSTICK_DEAD_ZONE*JOYSTICK_DEAD_ZONE)
 
 #define JOYSTICK_FAKEDIGITAL_DEAD_ZONE .66f
@@ -68,8 +73,8 @@ const KeyBinding kDefaultKeyBindings[NUM_CONTROL_NEEDS] =
 [kNeed_TurnRight		] = {{SDL_SCANCODE_RIGHT,	0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_DPAD_RIGHT,	SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_LEFTX,		+1,		},
 [kNeed_JetUp			] = {{SDL_SCANCODE_A,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_TRIGGERLEFT,	+1,		},
 [kNeed_JetDown			] = {{SDL_SCANCODE_Z,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,+1,		},
-//[kNeed_PrevWeapon		] = {{0,					0,						}, 0,					+1,	{SDL_CONTROLLER_BUTTON_LEFTSHOULDER,SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
-[kNeed_AttackMode		] = {{SDL_SCANCODE_LSHIFT,	SDL_SCANCODE_RSHIFT,	}, 0,					-1,	{SDL_CONTROLLER_BUTTON_Y, 			SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
+[kNeed_PrevWeapon		] = {{SDL_SCANCODE_RSHIFT,	SDL_SCANCODE_LEFTBRACKET}, 0,					+1,	{SDL_CONTROLLER_BUTTON_LEFTSHOULDER,SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
+[kNeed_NextWeapon		] = {{SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RIGHTBRACKET}, 0,					-1,	{SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,SDL_CONTROLLER_BUTTON_Y,			}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
 [kNeed_Attack			] = {{SDL_SCANCODE_SPACE,	0,						}, SDL_BUTTON_LEFT,		0,	{SDL_CONTROLLER_BUTTON_X,			SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
 [kNeed_PickUp			] = {{DEFAULTKB1_PICKUP,	DEFAULTKB2_PICKUP,		}, SDL_BUTTON_MIDDLE,	0,	{SDL_CONTROLLER_BUTTON_B,			SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
 [kNeed_Jump				] = {{DEFAULTKB1_JUMP,		DEFAULTKB2_JUMP,		}, SDL_BUTTON_RIGHT,	0,	{SDL_CONTROLLER_BUTTON_A,			SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
@@ -86,9 +91,8 @@ const KeyBinding kDefaultKeyBindings[NUM_CONTROL_NEEDS] =
 [kNeed_UIConfirm		] = {{SDL_SCANCODE_RETURN,	SDL_SCANCODE_SPACE,		}, 0,					0,	{SDL_CONTROLLER_BUTTON_START,		SDL_CONTROLLER_BUTTON_A,			}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
 [kNeed_UIBack			] = {{SDL_SCANCODE_ESCAPE,	0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_BACK,		SDL_CONTROLLER_BUTTON_B,			}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
 [kNeed_UIPause			] = {{SDL_SCANCODE_ESCAPE,	0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_START,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
-[kNeed_ToggleMusic		] = {{SDL_SCANCODE_F9,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
-[kNeed_ToggleAmbient	] = {{SDL_SCANCODE_F10,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
-[kNeed_ToggleFullscreen	] = {{SDL_SCANCODE_F11,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
+[kNeed_ToggleMusic		] = {{SDL_SCANCODE_M,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
+[kNeed_ToggleAmbient	] = {{SDL_SCANCODE_B,		0,						}, 0,					0,	{SDL_CONTROLLER_BUTTON_INVALID,		SDL_CONTROLLER_BUTTON_INVALID,		}, SDL_CONTROLLER_AXIS_INVALID,		0,		},
 };
 
 
@@ -101,7 +105,7 @@ const KeyBinding kDefaultKeyBindings[NUM_CONTROL_NEEDS] =
 /* STATIC FUNCTIONS   */
 /**********************/
 
-static inline void UpdateKeyState(Byte* state, bool downNow)
+static inline void UpdateKeyState(KeyState* state, bool downNow)
 {
 	switch (*state)	// look at prev state
 	{
@@ -109,10 +113,15 @@ static inline void UpdateKeyState(Byte* state, bool downNow)
 		case KEYSTATE_PRESSED:
 			*state = downNow ? KEYSTATE_HELD : KEYSTATE_UP;
 			break;
+
 		case KEYSTATE_OFF:
 		case KEYSTATE_UP:
 		default:
 			*state = downNow ? KEYSTATE_PRESSED : KEYSTATE_OFF;
+			break;
+
+		case KEYSTATE_IGNOREHELD:
+			*state = downNow ? KEYSTATE_IGNOREHELD : KEYSTATE_OFF;
 			break;
 	}
 }
@@ -156,7 +165,7 @@ void UpdateInput(void)
 						return;
 
 					case SDL_WINDOWEVENT_RESIZED:
-						QD3D_OnWindowResized(event.window.data1, event.window.data2);
+						QD3D_OnWindowResized();
 						break;
 
 /*
@@ -229,7 +238,25 @@ void UpdateInput(void)
 	}
 
 	// --------------------------------------------
+	// Intercept system key chords
 
+	if (GetNewSDLKeyState(SDL_SCANCODE_RETURN)
+		&& (GetSDLKeyState(SDL_SCANCODE_LALT) || GetSDLKeyState(SDL_SCANCODE_RALT)))
+	{
+		gGamePrefs.fullscreen = gGamePrefs.fullscreen ? 0 : 1;
+		SetFullscreenMode(false);
+
+		gRawKeyboardState[SDL_SCANCODE_RETURN] = KEYSTATE_IGNOREHELD;
+	}
+
+	if ((!gTerrainPtr || gGamePaused) && IsCmdQPressed())
+	{
+		CleanQuit();
+		return;
+	}
+
+	// --------------------------------------------
+	// Update need states
 
 	for (int i = 0; i < NUM_CONTROL_NEEDS; i++)
 	{
@@ -239,7 +266,7 @@ void UpdateInput(void)
 
 		for (int j = 0; j < KEYBINDING_MAX_KEYS; j++)
 			if (kb->key[j] && kb->key[j] < numkeys)
-				downNow |= 0 != keystate[kb->key[j]];
+				downNow |= gRawKeyboardState[kb->key[j]] & KEYSTATE_ACTIVE_BIT;
 
 		if (kb->mouseButton)
 			downNow |= 0 != (mouseButtons & SDL_BUTTON(kb->mouseButton));
@@ -263,13 +290,19 @@ void UpdateInput(void)
 
 		UpdateKeyState(&gNeedStates[i], downNow);
 	}
+}
 
 
-	if (GetNewNeedState(kNeed_ToggleFullscreen))
-	{
-		gGamePrefs.fullscreen = gGamePrefs.fullscreen ? 0 : 1;
-		SetFullscreenMode(false);
-	}
+/******* DID USER PRESS CMD+Q (MAC ONLY) *******/
+
+bool IsCmdQPressed(void)
+{
+#if __APPLE__
+	return (GetSDLKeyState(SDL_SCANCODE_LGUI) || GetSDLKeyState(SDL_SCANCODE_RGUI))
+		&& GetNewSDLKeyState(SDL_GetScancodeFromKey(SDLK_q));
+#else
+	return false;
+#endif
 }
 
 
@@ -291,7 +324,7 @@ bool GetNewSDLKeyState(unsigned short sdlScanCode)
 
 bool GetSDLKeyState(unsigned short sdlScanCode)
 {
-	return gRawKeyboardState[sdlScanCode] == KEYSTATE_PRESSED || gRawKeyboardState[sdlScanCode] == KEYSTATE_HELD;
+	return 0 != (gRawKeyboardState[sdlScanCode] & KEYSTATE_ACTIVE_BIT);
 }
 
 bool AreAnyNewKeysPressed(void)
@@ -318,9 +351,13 @@ bool GetNewNeedState(int needID)
 
 SDL_GameController* TryOpenController(bool showMessage)
 {
+#if OSXPPC
+	#warning Controller support not available on OSXPPC
+	return NULL;
+#else
 	if (gSDLController)
 	{
-		printf("Already have a valid controller.\n");
+		SDL_Log("Already have a valid controller.");
 		return gSDLController;
 	}
 
@@ -340,11 +377,11 @@ SDL_GameController* TryOpenController(bool showMessage)
 
 	if (!gSDLController)
 	{
-		printf("Joystick(s) found, but none is suitable as an SDL_GameController.\n");
+		SDL_Log("Joystick(s) found, but none is suitable as an SDL_GameController.");
 		if (showMessage)
 		{
 			char messageBuf[1024];
-			snprintf(messageBuf, sizeof(messageBuf),
+			SDL_snprintf(messageBuf, sizeof(messageBuf),
 					 "The game does not support your controller yet (\"%s\").\n\n"
 					 "You can play with the keyboard and mouse instead. Sorry!",
 					 SDL_JoystickNameForIndex(0));
@@ -357,17 +394,18 @@ SDL_GameController* TryOpenController(bool showMessage)
 		return NULL;
 	}
 
-	printf("Opened joystick %d as controller: %s\n", gSDLJoystickInstanceID, SDL_GameControllerName(gSDLController));
+	SDL_Log("Opened joystick %d as controller: %s", gSDLJoystickInstanceID, SDL_GameControllerName(gSDLController));
 
 	/*
 	gSDLHaptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(gSDLController));
 	if (!gSDLHaptic)
-		printf("This joystick can't do haptic.\n");
+		SDL_Log("This joystick can't do haptic.");
 	else
-		printf("This joystick can do haptic!\n");
+		SDL_Log("This joystick can do haptic!");
 	*/
 
 	return gSDLController;
+#endif
 }
 
 void OnJoystickRemoved(SDL_JoystickID which)
@@ -378,7 +416,7 @@ void OnJoystickRemoved(SDL_JoystickID which)
 	if (which != gSDLJoystickInstanceID)	// don't care, this isn't the joystick I'm using
 		return;
 
-	printf("Current joystick was removed: %d\n", which);
+	SDL_Log("Current joystick was removed: %d", which);
 
 	// Nuke reference to this controller+joystick
 	SDL_GameControllerClose(gSDLController);

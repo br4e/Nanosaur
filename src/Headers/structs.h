@@ -28,7 +28,7 @@
 
 
 		/* COLLISION BOX */
-		
+
 typedef struct
 {
 	long	left,right,front,back,top,bottom;
@@ -39,7 +39,7 @@ typedef struct
 		/****************************/
 		/* POLYGONAL COLLISION INFO */
 		/****************************/
-		
+
 typedef struct
 {
 	TQ3Point3D			verts[3];			// coords of each vertex
@@ -61,7 +61,7 @@ typedef struct
 		//
 		// NOTE: Similar to joint definition but lacks animation, rot/scale info.
 		//
-		
+
 typedef struct
 {
 	int					parentBone;						// index to previous bone
@@ -74,12 +74,12 @@ typedef struct
 
 
 			/* DECOMPOSED POINT INFO */
-			
+
 typedef struct
 {
 	TQ3Point3D	realPoint;							// point coords as imported in 3DMF model
 	TQ3Point3D	boneRelPoint;						// point relative to bone coords (offset from bone)
-	
+
 	Byte		numRefs;							// # of places this point is used in the geometry data
 	Byte		whichTriMesh[MAX_POINT_REFS];		// index to trimeshes
 	short		whichPoint[MAX_POINT_REFS];			// index into pointlist of triMesh above
@@ -89,7 +89,7 @@ typedef struct
 
 
 		/* CURRENT JOINT STATE */
-		
+
 typedef struct
 {
 	SInt32		tick;					// time at which this state exists
@@ -101,7 +101,7 @@ typedef struct
 
 
 		/* JOINT DEFINITIONS */
-		
+
 typedef struct
 {
 	signed char			numKeyFrames[MAX_ANIMS];				// # keyframes
@@ -109,7 +109,7 @@ typedef struct
 }JointKeyFrameHeader;
 
 			/* ANIM EVENT TYPE */
-			
+
 typedef struct
 {
 	short	time;
@@ -119,7 +119,7 @@ typedef struct
 
 
 			/* SKELETON INFO */
-		
+
 typedef struct
 {
 	Byte				NumBones;						// # joints in this skeleton object
@@ -167,12 +167,12 @@ typedef struct
 	JointKeyframeType	MorphStart[MAX_JOINTS];		// morph start & end keyframes for each joint
 	JointKeyframeType	MorphEnd[MAX_JOINTS];
 
-	float			CurrentAnimTime;				// current time index for animation	
+	float			CurrentAnimTime;				// current time index for animation
 	float			LoopBackTime;					// time to loop or zigzag back to (default = 0 unless set by a setmarker)
 	float			MaxAnimTime;					// duration of current anim
 	float			AnimSpeed;						// time factor for speed of executing current anim (1.0 = normal time)
 	Byte			AnimEventIndex;					// current index into anim event list
-	Byte			AnimDirection;					// if going forward in timeline or backward			
+	Byte			AnimDirection;					// if going forward in timeline or backward
 	Byte			EndMode;						// what to do when reach end of animation
 	Boolean			AnimHasStopped;					// flag gets set when anim has reached end of sequence (looping anims don't set this!)
 
@@ -189,8 +189,8 @@ struct TerrainItemEntryType
 	UInt16	x,y;
 	UInt16	type;
 	Byte	parm[4];
-	
-	UInt16	flags;							
+
+	UInt16	flags;
 
 	// Source port fix: changed from pointers to 32-bit longs for 64-bit compatibility.
 	// These "pointers" were loaded from Level1.ter -- they're actually just stored as zeores
@@ -244,15 +244,15 @@ struct ObjNode
 	struct	ObjNode	*ShadowNode;		// ptr to node's shadow (if any)
 	struct	ObjNode	*PlatformNode;		// ptr to object which it on top of.
 	struct	ObjNode	*CarriedObj;		// ptr to object being carried/pickedup
-	
+
 	Byte				NumCollisionBoxes;
 	CollisionBoxType	CollisionBoxes[MAX_BOXES_PER_OBJNODE];				// array of collision boxes
 	short			LeftOff,RightOff,FrontOff,BackOff,TopOff,BottomOff;		// box offsets (only used by simple objects with 1 collision box)
-	
+
 	TriangleCollisionList	*CollisionTriangles; // ptr to triangle collision data
-	
+
 	short				StreamingEffect;		// streaming effect (-1 = none)
-	
+
 	TQ3Matrix4x4		BaseTransformMatrix;	// matrix which contains all of the transforms for the object as a whole
 
 	int						NumMeshes;
@@ -272,7 +272,7 @@ typedef struct ObjNode ObjNode;
 
 
 		/* NEW OBJECT DEFINITION TYPE */
-		
+
 typedef struct
 {
 	Byte		genre,group,type,animNum;
@@ -285,7 +285,7 @@ typedef struct
 
 
 		/* TIME PORTAL STRUCT */
-		
+
 typedef struct
 {
 	TQ3Point2D	coord;
@@ -293,7 +293,7 @@ typedef struct
 
 
 		/* PREFERENCES */
-		
+
 typedef struct
 {
 	char magic[32];

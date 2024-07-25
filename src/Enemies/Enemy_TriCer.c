@@ -27,14 +27,14 @@ static void MoveTricer_Standing(ObjNode *theNode);
 
 #define	TRICER_ATTACK_RANGE	600
 #define	TRICER_ATTACK_RANGE_IN_BUSH	550
-#define TRICER_TURN_SPEED	1.5
+#define TRICER_TURN_SPEED	2.5
 #define	MAX_WALK_SPEED		240
 
 #define	TRICER_TARGET_SCALE	40
 
 
 
-#define	TRICER_HEALTH		4.0		
+#define	TRICER_HEALTH		3.0
 #define	TRICER_DAMAGE		.1
 
 #define	TRICER_SCALE		2.2
@@ -90,16 +90,16 @@ ObjNode	*newObj;
 
 	if (itemPtr)									// (itemptr == nil if in bush)
 	{
-		if (!(itemPtr->parm[3] & 1))				// see if always add 
+		if (!(itemPtr->parm[3] & 1))				// see if always add
 		{
 			if (gNumEnemyOfKind[ENEMY_KIND_TRICER] >= MAX_TRICER)
-				return(false);		
+				return(false);
 		}
 	}
 
 
 				/* MAKE DEFAULT SKELETON ENEMY */
-				
+
 	newObj = MakeEnemySkeleton(SKELETON_TYPE_TRICER,x,z);
 	if (newObj == nil)
 		return(false);
@@ -109,11 +109,11 @@ ObjNode	*newObj;
 	newObj->TerrainItemPtr = itemPtr;
 
 	SetSkeletonAnim(newObj->Skeleton, TRICER_ANIM_STAND);
-	
+
 	newObj->Coord.y -= FOOT_OFFSET;							// adjust y
-	
+
 				/* SET BETTER INFO */
-						
+
 	newObj->MoveCall = MoveTricer;							// set move call
 
 	newObj->Health = TRICER_HEALTH;
@@ -122,18 +122,18 @@ ObjNode	*newObj;
 
 	newObj->Scale.x = newObj->Scale.y = newObj->Scale.z = TRICER_SCALE;	// set scale
 	newObj->Radius *= TRICER_SCALE;
-	
+
 	newObj->Rot.y = RandomFloat()*PI2;						// random rotation
-		
+
 				/* SET COLLISION INFO */
-				
+
 	SetObjectCollisionBounds(newObj, 90,FOOT_OFFSET,-120,120,120,-120);
 	CalcNewTargetOffsets(newObj,TRICER_TARGET_SCALE);
 	newObj->TargetChangeTimer = 0;
 
 
 				/* MAKE SHADOW */
-				
+
 	AttachShadowToObject(newObj, 2.7, 2.7*1.5);
 
 
@@ -182,7 +182,7 @@ ObjNode	*bushObj;
 	if (CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z) < dist)
 	{
 		MorphToSkeletonAnim(theNode->Skeleton, TRICER_ANIM_WALK,5);
-		
+
 		if (theNode->InBush)
 		{
 			theNode->InBush = false;
@@ -194,20 +194,20 @@ ObjNode	*bushObj;
 	}
 
 			/* IF INSIDE BUSH, KEEP AIMED */
-			
+
 	if (theNode->InBush)
 	{
-		TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, TRICER_TURN_SPEED*10, false);			
+		TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, TRICER_TURN_SPEED*10, false);
 	}
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
 
-	UpdateEnemy(theNode);		
-	
+	UpdateEnemy(theNode);
+
 }
 
 
@@ -220,11 +220,11 @@ float	r;
 	theNode->Skeleton->AnimSpeed = MAX_WALK_SPEED / 63.3;			// tweak speed to sync
 
 			/* MOVE TOWARD PLAYER */
-			
-	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, TRICER_TURN_SPEED, true);			
+
+	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, TRICER_TURN_SPEED, true);
 
 	r = theNode->Rot.y;
-	theNode->Speed = MAX_WALK_SPEED;	
+	theNode->Speed = MAX_WALK_SPEED;
 	gDelta.x = -sin(r) * MAX_WALK_SPEED;
 	gDelta.z = -cos(r) * MAX_WALK_SPEED;
 	gDelta.y -= GRAVITY_CONSTANT*gFramesPerSecondFrac;				// add gravity
@@ -234,20 +234,11 @@ float	r;
 	if (CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z) > (TRICER_ATTACK_RANGE*4))
 		MorphToSkeletonAnim(theNode->Skeleton, TRICER_ANIM_STAND,3);
 
-	
+
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
-	
-	UpdateEnemy(theNode);		
+
+	UpdateEnemy(theNode);
 }
-
-
-
-
-
-
-
-
-

@@ -43,7 +43,7 @@ static void MoveShield(ObjNode *theNode);
 /****************************/
 
 
-#define	MY_SCALE			.5f 
+#define	MY_SCALE			.5f
 
 #define	MY_FOOT_JOINT_NUM	7
 
@@ -86,22 +86,22 @@ void InitMyGuy(void)
 {
 ObjNode	*newObj;
 float	y;
-		
-	gMyLatestPathTileNum = 	gMyLatestTileAttribs = 0;		
-	gLavaSmokeCounter = gMySpeedPuffCounter = 0;	
-	gShieldTimer = 0;				
+
+	gMyLatestPathTileNum = 	gMyLatestTileAttribs = 0;
+	gLavaSmokeCounter = gMySpeedPuffCounter = 0;
+	gShieldTimer = 0;
 	gMyShield = nil;
 	gMyHealth = 1.0;
 	gShieldChannel = -1;
-	
+
 	y = GetTerrainHeightAtCoord_Quick(gMyStartX,gMyStartZ)-DIST_FROM_ORIGIN_TO_FEET;
-	
+
 	gMyCoord.x = gMyStartX;
 	gMyCoord.z = gMyStartZ;
 	gMyCoord.y = y+50;
-					
-			/* CREATE MY CHARACTER */	
-	
+
+			/* CREATE MY CHARACTER */
+
 	gNewObjectDefinition.type 	= SKELETON_TYPE_DEINON;
 	gNewObjectDefinition.animNum = PLAYER_ANIM_FALLING;
 	gNewObjectDefinition.coord.x = gMyStartX;
@@ -112,32 +112,32 @@ float	y;
 	gNewObjectDefinition.moveCall = MoveMe;
 	gNewObjectDefinition.rot = (float)gMyStartAim * (PI2/8);
 	gNewObjectDefinition.scale = MY_SCALE;
-	newObj = gPlayerObj = MakeNewSkeletonObject(&gNewObjectDefinition);	
-	
+	newObj = gPlayerObj = MakeNewSkeletonObject(&gNewObjectDefinition);
+
 	newObj->CType = CTYPE_SKELETON|CTYPE_PLAYER;
 	newObj->CBits = CBITS_TOUCHABLE;
-	
-	
+
+
 			/* INIT COLLISION BOX */
-			
+
 	SetObjectCollisionBounds(newObj,60*MY_SCALE,-DIST_FROM_ORIGIN_TO_FEET,-50*MY_SCALE,
 							50*MY_SCALE,50*MY_SCALE,-50*MY_SCALE);
 
 	newObj->Damage = .5;
-	
+
 	newObj->InvincibleTimer = 0;
-	
-	
+
+
 				/* MAKE SHADOW */
-				
+
 	AttachShadowToObject(newObj, .9, .9*2.5);
-				
+
 
 			/* MAKE APPEARANCE TIME PORTAL */
 
 	gMyTimePortal = MakeTimePortal(PORTAL_TYPE_ENTER, gMyStartX, gMyStartZ);
 	gMyTimePortalTimer = 2.5;
-	PlayEffect_Parms(EFFECT_PORTAL,FULL_CHANNEL_VOLUME,kMiddleC-8);	
+	PlayEffect_Parms(EFFECT_PORTAL,FULL_CHANNEL_VOLUME,kMiddleC-8);
 }
 
 
@@ -156,11 +156,11 @@ ObjNode	*theNode = gPlayerObj;
 		gGameOverFlag = true;
 		return;
 	}
-	
+
 
 	gPlayerGotKilledFlag = false;
 	gMyHealth = 1.0;
-	gFuel = 0;	
+	gFuel = 0;
 	gInfobarUpdateBits |= UPDATE_HEALTH|UPDATE_FUEL|UPDATE_SCORE|UPDATE_LIVES;
 
 	theNode->HurtTimer = 0;
@@ -168,7 +168,7 @@ ObjNode	*theNode = gPlayerObj;
 
 
 			/* EXPLODE "OLD" ONE */
-			
+
 	QD3D_ExplodeGeometry(theNode, 500.0f, 0, 3, .4);		// note: this doesnt delete anything
 
 
@@ -180,22 +180,22 @@ ObjNode	*theNode = gPlayerObj;
 
 
 			/* RESET PLAYER INTO POSITION */
-			
+
 	SetSkeletonAnim(theNode->Skeleton, PLAYER_ANIM_FALLING);		// start falling
 	theNode->Coord.y += 400;
 	theNode->StatusBits |= STATUS_BIT_HIDDEN;
 
 	UpdateObjectTransforms(theNode);
-	
-	
+
+
 			/* ALSO RESET CAMERA */
-			
+
 	ResetCameraSettings();
-	
-	
-	
+
+
+
 			/* AND RESET WEAPONS INVENTORY */
-			
+
 	InitWeaponManager();
 }
 
@@ -207,7 +207,7 @@ static void MoveMe(ObjNode *theNode)
 static	void(*myMoveTable[])(ObjNode *) =
 				{
 					MovePlayer_Standing,
-					MovePlayer_Walking,	
+					MovePlayer_Walking,
 					MovePlayer_Jumping2,
 					MovePlayer_Landing,
 					MovePlayer_Biting,
@@ -222,12 +222,12 @@ static	void(*myMoveTable[])(ObjNode *) =
 					MovePlayer_Death,
 					MovePlayer_Exit
 				};
-	
+
 	GetObjectInfo(theNode);
 
-	
+
 		/* DON'T DO ANYTHING UNTIL ENTRY TIME PORTAL TIMES OUT */
-				
+
 	if (gMyTimePortalTimer > 0.0f)
 	{
 		gMyTimePortalTimer -= gFramesPerSecondFrac;
@@ -242,25 +242,25 @@ static	void(*myMoveTable[])(ObjNode *) =
 
 			PlayEffect_Parms(EFFECT_PORTAL,FULL_CHANNEL_VOLUME,kMiddleC+2);			
 		}
-		UpdatePlayer(theNode);			
+		UpdatePlayer(theNode);
 		return;
 	}
-	
+
 			/* UPDATE INVINCIBILITY */
-			
+
 	if (theNode->InvincibleTimer > 0)
 	{
 		theNode->InvincibleTimer -= gFramesPerSecondFrac;
 		if (theNode->InvincibleTimer < 0)
 			theNode->InvincibleTimer = 0;
 	}
-	
+
 		/* FORCE ME DEAD IF THAT'S THE CASE */
-		
+
 	if (gPlayerGotKilledFlag)
 		if (theNode->Skeleton->AnimNum != PLAYER_ANIM_DEATH)
 			SetSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_DEATH);
-	
+
 	myMoveTable[theNode->Skeleton->AnimNum](theNode);
 
 		/* ALWAYS UPDATE MY SKELETON EVEN IF I'M HIDDEN FOR FIRST-PERSON */
@@ -284,32 +284,32 @@ static void MovePlayer_Standing(ObjNode *theNode)
 	CheckJetThrustControl(theNode);
 
 			/* MOVE PLAYER */
-			
+
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);
 	DoPlayerMovement(theNode);
-		
+
 
 			/* CHECK ANIM */
-			
+
 	if ((gDelta.z != 0.0f) || (gDelta.x != 0.0f))				// see if go/run
 		if (!theNode->JetThrust)						// make sure jet didnt just now get activated
 			MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_WALK,15.0);
 
-	
+
 			/* DO COLLISION DETECT */
-			
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 
 			/* SEE IF ATTACK */
-			
+
 	CheckIfMeAttack(theNode);
 
 
 			/* UPDATE IT */
-			
-update:			
+
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -328,8 +328,8 @@ static void MovePlayer_Walking(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);
 	DoPlayerMovement(theNode);
-	
-		
+
+
 		/* UPDATE ANIM SPEED */
 
 	if (theNode->Skeleton->AnimNum == PLAYER_ANIM_WALK)
@@ -337,26 +337,26 @@ static void MovePlayer_Walking(ObjNode *theNode)
 
 
 			/* CHECK ANIM */
-			
+
 	if ((gDelta.z == 0.0f) && (gDelta.x == 0.0f))				// see if stop/stand
 	{
 		MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_STAND,3.0);
 	}
 
-	
+
 			/* DO COLLISION DETECT */
-			
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 			/* SEE IF ATTACK */
-			
+
 	CheckIfMeAttack(theNode);
-	
+
 
 			/* UPDATE IT */
-			
-update:			
+
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -381,23 +381,23 @@ static void MovePlayer_Jumping1(ObjNode *theNode)
 			/* MOVE PLAYER */
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL/10);			// do friction
-			
+
 	DoPlayerMovement(theNode);										// returns true if on terrain
 
 
 			/* SEE IF SWITCH TO FALLING */
-			
+
 	if (theNode->Skeleton->AnimNum != PLAYER_ANIM_FALLING)
 	{
 		if (gDelta.y <= 0)
 			MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_FALLING,2.0);	// start falling
-	}		
-	
+	}
+
 			/* DO COLLISION DETECT */
-			
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 	if (theNode->StatusBits & STATUS_BIT_ONGROUND)							// see if landed on something solid
 	{
 		DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL*5);				// do momentary friction upon landing
@@ -406,14 +406,14 @@ static void MovePlayer_Jumping1(ObjNode *theNode)
 		MakeDustPuff(gCoord.x, gCoord.y-DIST_FROM_ORIGIN_TO_FEET, gCoord.z, .2);
 		MakeDustPuff(gCoord.x, gCoord.y-DIST_FROM_ORIGIN_TO_FEET, gCoord.z, .25);
 	}
-	
+
 			/* SEE IF ATTACK */
-			
+
 	CheckIfMeAttack(theNode);
-	
-	
+
+
 			/* UPDATE IT */
-update:			
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -429,16 +429,16 @@ static void MovePlayer_Landing(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL/10);							// do friction
 	DoPlayerMovement(theNode);
-			
+
 	if (theNode->Skeleton->AnimHasStopped)									// returns true if on terrain
 		MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_STAND,4);
-		
-	
+
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 			/* UPDATE IT */
-update:			
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -460,7 +460,7 @@ static void MovePlayer_Jumping2(ObjNode *theNode)
 			/* MOVE PLAYER */
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL/10.0f);			// do friction
-			
+
 	DoPlayerMovement(theNode);										// returns true if on terrain
 
 	theNode->Rot.x -= 6.0f * gFramesPerSecondFrac;					// spin when jump
@@ -469,13 +469,13 @@ static void MovePlayer_Jumping2(ObjNode *theNode)
 		theNode->Rot.x = 0;
 		MorphToSkeletonAnim(theNode->Skeleton, PLAYER_ANIM_FALLING, 3.0);
 	}
-	
-	
+
+
 			/* DO COLLISION DETECT */
-			
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 	if (theNode->StatusBits & STATUS_BIT_ONGROUND)							// see if landed on something solid
 	{
 		DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL*5);				// do momentary friction upon landing
@@ -485,9 +485,9 @@ static void MovePlayer_Jumping2(ObjNode *theNode)
 		MakeDustPuff(gCoord.x, gCoord.y-DIST_FROM_ORIGIN_TO_FEET, gCoord.z, .2);
 		MakeDustPuff(gCoord.x, gCoord.y-DIST_FROM_ORIGIN_TO_FEET, gCoord.z, .25);
 	}
-	
+
 			/* UPDATE IT */
-update:			
+update:
 
 	if (theNode->Skeleton->AnimNum != PLAYER_ANIM_JUMP2)	// fix x-rot if anim has changed
 		theNode->Rot.x = 0;
@@ -506,7 +506,7 @@ static void MovePlayer_Biting(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);							// do friction
 	DoPlayerMovement(theNode);
-			
+
 	if (theNode->Skeleton->AnimHasStopped)									// returns true if on terrain
 		MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_STAND,4);
 
@@ -547,25 +547,25 @@ static void MovePlayer_Turning(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);
 	DoPlayerMovement(theNode);
-		
-		
+
+
 			/* DO COLLISION DETECT */
-			
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
 
 
 		/* UPDATE ANIM SPEED */
-			
+
 	theNode->Skeleton->AnimSpeed = .7f + theNode->Speed * .006f;
-	
+
 			/* SEE IF ATTACK */
-			
+
 	CheckIfMeAttack(theNode);
 
 
 			/* UPDATE IT */
-update:			
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -582,7 +582,7 @@ static void MovePlayer_PickUp(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);					// do friction
 	DoPlayerMovement(theNode);
-			
+
 	if (theNode->Skeleton->AnimHasStopped)									// returns true if on terrain
 		SetSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_STAND);
 
@@ -595,9 +595,9 @@ static void MovePlayer_PickUp(ObjNode *theNode)
 	if (theNode->PickUpNow)
 	{
 		theNode->PickUpNow = false;
-		
+
 		if (theNode->StatusBits & STATUS_BIT_ISCARRYING)
-			DropItem(theNode);	
+			DropItem(theNode);
 		else
 			TryToDoPickUp(theNode,MYGUY_LIMB_HEAD);
 	}
@@ -623,7 +623,7 @@ float	r;
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);		// do friction
 	DoPlayerMovement(theNode);
-			
+
 	if (theNode->Skeleton->AnimHasStopped)
 		SetSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_STAND);
 
@@ -636,26 +636,26 @@ float	r;
 	if (theNode->ThrowNow)
 	{
 		theNode->ThrowNow = false;								// clear flag
-		
+
 		if (theNode->StatusBits & STATUS_BIT_ISCARRYING)		// verify this is still valid
 		{
 			itemObj = theNode->CarriedObj;						// remember what obj is being thrown
 			if (itemObj->CType == INVALID_NODE_FLAG)			// make sure object is valid
 				return;
-			
+
 			DropItem(theNode);									// cause it to be dropped, but CarriedObj still pts to it
-			
+
 					/* CALC THROW VECTOR */
-					
+
 			r = theNode->Rot.y;									// get player y rot
-			itemObj->Delta.x = gDelta.x + sin(r) * -THROW_FORCE;				
-			itemObj->Delta.z = gDelta.z + cos(r) * -THROW_FORCE;				
+			itemObj->Delta.x = gDelta.x + sin(r) * -THROW_FORCE;
+			itemObj->Delta.z = gDelta.z + cos(r) * -THROW_FORCE;
 			itemObj->Delta.y = 80;
-			
+
 			itemObj->RotDelta.x = (RandomFloat()-.5f)*30.0f;		// put random spin on it
 			itemObj->RotDelta.y = (RandomFloat()-.5f)*30.0f;
 			itemObj->RotDelta.z = (RandomFloat()-.5f)*30.0f;
-		}			
+		}
 	}
 
 
@@ -673,16 +673,16 @@ static void MovePlayer_GetHurt(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL/10);					// do friction
 	DoPlayerMovement(theNode);
-			
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 	if ((theNode->HurtTimer -= gFramesPerSecondFrac) < 0.0f)				// see if done being hurt
 		MorphToSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_STAND,4);
-		
-	
+
+
 			/* UPDATE IT */
-update:			
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -701,36 +701,36 @@ int	oldFuel;
 
 
 			/* MOVE IT */
-			
+
 	DoPlayerJetMovement(theNode);
 
-			
+
 			/* SEE IF ATTACK */
-			
+
 	CheckIfMeAttack(theNode);
 
 
 			/* LOSE FUEL */
-			
+
 	oldFuel = gFuel;
-	gFuel -= gFramesPerSecondFrac * FUEL_LOSS_RATE;	
+	gFuel -= gFramesPerSecondFrac * FUEL_LOSS_RATE;
 	if (gFuel <= 0.0f)
 	{
 		gFuel = 0;
 		gInfobarUpdateBits |= UPDATE_FUEL;
 		StopJetPack(theNode);
 	}
-	if ((int)gFuel != oldFuel)								// only update infobar if changed by integer value 
+	if ((int)gFuel != oldFuel)								// only update infobar if changed by integer value
 		gInfobarUpdateBits |= UPDATE_FUEL;
 
 				/* COLLISION */
-				
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
 
-	
+
 			/* UPDATE IT */
-update:			
+update:
 	UpdatePlayer(theNode);
 }
 
@@ -747,12 +747,12 @@ static void MovePlayer_Death(ObjNode *theNode)
 
 	DoFrictionAndGravity(theNode,PLAYER_FRICTION_ACCEL);						// do friction
 	DoPlayerMovement(theNode);
-	
+
 	if (DoPlayerCollisionDetect(theNode))
 		goto update;
-	
+
 			/* UPDATE IT */
-update:			
+update:
 	if (theNode->Skeleton->AnimNum != PLAYER_ANIM_DEATH)							// make sure stays dead!
 		SetSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_DEATH);
 
@@ -768,7 +768,7 @@ TQ3Point3D	oldMyCoord;
 
 			/* MOVE UP PORTAL */
 
-	if (theNode->Flag[0]) 
+	if (theNode->Flag[0])
 	{
 		gDelta.y += gFramesPerSecondFrac * 100;
 		gCoord.y += gDelta.y * gFramesPerSecondFrac;
@@ -781,9 +781,9 @@ TQ3Point3D	oldMyCoord;
 	}
 	else
 	{
-		gDelta.x = gDelta.y = gDelta.z;	
-	}	
-	
+		gDelta.x = gDelta.y = gDelta.z;
+	}
+
 	if (theNode->Skeleton->AnimNum != PLAYER_ANIM_EXIT)							// make sure stays exited
 		SetSkeletonAnim(theNode->Skeleton,PLAYER_ANIM_EXIT);
 
@@ -801,7 +801,7 @@ static void UpdatePlayer(ObjNode *theNode)
 {
 
 		/* SEE IF ENTRY PORTAL SHOULD STOP */
-		
+
 	if (gMyTimePortal)
 	{
 		if (gMyTimePortalTimer <= 0.0f
@@ -813,12 +813,12 @@ static void UpdatePlayer(ObjNode *theNode)
 	}
 	else
 		gMyCoord = gCoord;							// only if no portal so camera wont track me
-		
+
 	UpdateObject(theNode);
-	
+
 			/* CHECK FOR EASTER EGG */
-			
-	if (gMyCoord.y > 1500)						// while riding birdie does this
+
+	if (gMyCoord.y > 2000)						// while riding birdie does this
 	{
 		GetCheatWeapons();
 		GetHealth(1);
@@ -845,21 +845,21 @@ float		y;
 UInt8		sides;
 
 			/* AUTOMATICALLY HANDLE THE GOOD STUFF */
-			
+
 	if (gPlayerGotKilledFlag)
-		sides = HandleCollisions(theNode, CTYPE_MISC|CTYPE_BGROUND);	
+		sides = HandleCollisions(theNode, CTYPE_MISC|CTYPE_BGROUND);
 	else
 		sides = HandleCollisions(theNode, PLAYER_COLLISION_CTYPE);
 
 
 			/* SEE IF NEED TO SET GROUND FLAG */
-			
+
 	if (sides & SIDE_BITS_BOTTOM)
-		theNode->StatusBits |= STATUS_BIT_ONGROUND;	
+		theNode->StatusBits |= STATUS_BIT_ONGROUND;
 
 
 			/* MAKE SURE I DIDN'T GET PUSHED UNDERGROUND */
-			
+
 	y = GetTerrainHeightAtCoord_Planar(gCoord.x, gCoord.z) + DIST_FROM_ORIGIN_TO_FEET;
 	if (gCoord.y < y)
 		gCoord.y = y;
@@ -875,49 +875,49 @@ UInt8		sides;
 		{
 			hitObj = gCollisionList[i].objectPtr;				// get ObjNode of this collision
 			ctype = hitObj->CType;								// get collision ctype from hit obj
-					
+
 				/*******************/
 				/* CHECK FOR ENEMY */
 				/*******************/
-				
+
 			if (ctype & CTYPE_ENEMY)
 			{
 				hitObj->Delta.x = hitObj->Delta.z = 0;
 				if (hitObj->CType & CTYPE_HURTIFTOUCH)			// see if enemy is deadly to touch
 					PlayerGotHurt(theNode,hitObj->Damage,true,false);
 			}
-			
+
 				/**********************/
 				/* SEE IF HURTME ITEM */
 				/**********************/
-				
+
 			else
 			if (ctype & CTYPE_HURTME)
 			{
 				PlayerGotHurt(theNode,hitObj->Damage,true,false);
-				
+
 					/* SEE IF WAS DINO SPIT */
-					
+
 				if ((hitObj->Group == GLOBAL_MGroupNum_DinoSpit) && (hitObj->Type == GLOBAL_MObjType_DinoSpit))
 				{
 					QD3D_ExplodeGeometry(hitObj, 100, 0, 10, .5);
 					DeleteObject(hitObj);
 				}
-			}			
+			}
 		}
 	}
-	
+
 		/********************************/
 		/* CHECK FOR SPECIAL PATH TILES */
 		/********************************/
 
-	gMyLatestPathTileNum = GetPathTileNum(gCoord.x, gCoord.z);		// get path tile under there	
+	gMyLatestPathTileNum = GetPathTileNum(gCoord.x, gCoord.z);		// get path tile under there
 	gMyLatestTileAttribs = GetTileAttribs(gCoord.x, gCoord.z);		// get tile attributes here (before move)
-		
+
 	if (gMyHeightOffGround < 1.0f)									// must be on terrain for these checks
 	{
 			/* SEE IF ON LAVA */
-			
+
 		if (gMyLatestTileAttribs & TILE_ATTRIB_LAVA)
 		{
 			float	x,z;
@@ -929,7 +929,7 @@ UInt8		sides;
 				gLavaSmokeCounter = 0;
 				x = (RandomFloat() - .5f) * 40.0f + gCoord.x;
 				z = (RandomFloat() - .5f) * 40.0f + gCoord.z;
-				MakeSmokePuff(x, gCoord.y, z, .1);					
+				MakeSmokePuff(x, gCoord.y, z, .1);
 			}
 		}
 	}
@@ -959,15 +959,15 @@ UInt32		ctype;
 	{
 		hitObj = gCollisionList[i].objectPtr;					// get ptr to hit obj
 		ctype = hitObj->CType;									// get collision ctype
-		
+
 				/* HIT AN ENEMY */
-				
-		if (ctype & CTYPE_ENEMY)								
+
+		if (ctype & CTYPE_ENEMY)
 		{
 			EnemyGotHurt(gCollisionList[i].objectPtr, theNode, MY_KICK_DAMAGE);
 		}
 	}
-	
+
 	return(n);
 }
 
@@ -978,16 +978,16 @@ void PlayerGotHurt(ObjNode *theNode, float damage, Boolean doHurtAnim, Boolean o
 {
 	if (damage == 0.0f)
 		return;
-		
+
 	if (!overrideShield)
 		if (gMyShield)															// see if shielded
 			return;
-		
+
 	StopJetPack(theNode);													// make sure this is stopped when get hit
 
 	if (gPlayerGotKilledFlag)												// cant get hurt if already dead
 		return;
-		
+
 	if (theNode->InvincibleTimer > 0)										// cant be harmed if invincible
 		return;
 
@@ -1006,8 +1006,8 @@ void PlayerGotHurt(ObjNode *theNode, float damage, Boolean doHurtAnim, Boolean o
 	else
 	if (theNode->InvincibleTimer < INVINCIBILITY_DURATION_SHORT)
 		theNode->InvincibleTimer = INVINCIBILITY_DURATION_SHORT;	// make me invincible for a shorter while
-	
-	
+
+
 	gMyHealth -= damage;										// take damage
 	gInfobarUpdateBits |= UPDATE_HEALTH;						// tell system to update this at end of frame
 	if (gMyHealth <= 0)											// see if was killed
@@ -1038,11 +1038,11 @@ void StartMyShield(ObjNode *theNode)
 	gShieldTimer = SHIELD_TIME;
 
 		/* MAKE SHIELD GEOMETRY */
-		
+
 	if (gMyShield == nil)
 	{
-		gNewObjectDefinition.group = GLOBAL_MGroupNum_Shield;	
-		gNewObjectDefinition.type = GLOBAL_MObjType_Shield;	
+		gNewObjectDefinition.group = GLOBAL_MGroupNum_Shield;
+		gNewObjectDefinition.type = GLOBAL_MObjType_Shield;
 		gNewObjectDefinition.coord = gMyCoord;
 		gNewObjectDefinition.flags = STATUS_BIT_KEEPBACKFACES;
 		gNewObjectDefinition.slot = SLOT_OF_DUMB;
@@ -1055,7 +1055,7 @@ void StartMyShield(ObjNode *theNode)
 			MakeObjectTransparent(gMyShield,.3);
 		}
 	}
-	
+
 	if (gShieldChannel == -1)
 		gShieldChannel = PlayEffect_Parms(EFFECT_SHIELD,150,kMiddleC);
 
@@ -1069,7 +1069,7 @@ static void MoveShield(ObjNode *theNode)
 float	fps = gFramesPerSecondFrac;
 
 			/* SEE IF TIMED OUT */
-			
+
 	gShieldTimer -= fps;
 	if (gShieldTimer <= 0.0f)
 	{
@@ -1084,15 +1084,10 @@ float	fps = gFramesPerSecondFrac;
 
 
 		/* UPDATE POSITION */
-		
+
 	theNode->Coord = gMyCoord;
 	theNode->Rot.y += fps * 6.0f;
 	theNode->Rot.z += fps * 9.0f;
-	
+
 	UpdateObjectTransforms(theNode);
 }
-
-
-
-
-

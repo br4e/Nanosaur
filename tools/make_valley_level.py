@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate a Nanosaur 1 playfield: grassy clearing with T-Rexes,
-powerups, eggs, and a time portal.
+Build a Nanosaur 1 playfield by cropping a real region out of original Level1.
 
-Uses original Level1.trt grass/cliff tiles. Cliff rim uses high
-heightmap values + PATH_TILE_SOLID_ALL so you can't jump out.
+This keeps authentic grass tile sequencing, cliff face textures (with flip bits),
+heightmap tiles, and path solids — instead of inventing a fake layout.
 """
 
 from __future__ import annotations
 
-import math
 import shutil
 import struct
 from pathlib import Path
@@ -18,40 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "Data" / "Terrain"
 ORIG_DIR = ROOT / "tools" / "original_terrain"
 
-# Multiples of SUPERTILE_SIZE (5)
+# Crop origin/size in original Level1 tile coords (must be multiples of 5 for size)
+# Tuned around the player start (tile 34,107) to include nearby cliff ledges.
+CROP_COL = 14
+CROP_ROW = 87
 MAP_W = 40
 MAP_D = 40
 TILE_PX = 32
 SUPERTILE = 5
-MAX_HM_TILES = 300
-CLIFF_DEPTH = 3  # outer tiles that are impassable cliffs
-
-# Original Level1 texture indices (grassy floor near start + cliff faces)
-TEX_GRASS = (
-    17,
-    36,
-    20,
-    1,
-    38,
-    39,
-    2,
-    21,
-    40,
-    19,
-    97,
-    96,
-    83,
-    98,
-    45,
-    62,
-    18,
-)
-TEX_CLIFF = (189, 200, 201, 190)
-
-PATH_SOLID_ALL = 9  # PATH_TILE_SOLID_ALL
-
-FLOOR_H = 85  # matches original flat height tile near start
-CLIFF_H = 255  # matches original high plateau / cliff tops
 
 ITEM_START = 0
 ITEM_POWERUP = 1
@@ -65,77 +37,6 @@ POW_HEATSEEK = 0
 POW_LASER = 1
 POW_HEALTH = 3
 POW_SHIELD = 4
-
-
-def load_original_tex_attrs() -> bytes:
-    data = (ORIG_DIR / "Level1.ter").read_bytes()
-    offs = struct.unpack_from(">7i2h2i", data, 0)
-    ta, tilanim = offs[9], offs[10]
-    return data[ta:tilanim]
-
-
-def write_trt(path: Path) -> None:
-    shutil.copyfile(ORIG_DIR / "Level1.trt", path)
-    n = struct.unpack_from(">i", path.read_bytes(), 0)[0]
-    print(f"wrote {path} (copied original tileset, {n} tiles)")
-
-
-def rim_t(col: float, row: float) -> float:
-    """0 at center/interior, 1 at outer edge."""
-    # Distance to nearest map edge, in tiles
-    dist = min(col, row, MAP_W - 1 - col, MAP_D - 1 - row)
-    if dist >= CLIFF_DEPTH + 1.5:
-        return 0.0
-    # 0 just inside cliff band, 1 at outer edge
-    return max(0.0, min(1.0, 1.0 - dist / (CLIFF_DEPTH + 1.5)))
-
-
-def field_height(col: float, row: float) -> int:
-    t = rim_t(col, row)
-    if t <= 0:
-        # Gentle interior rolls
-        roll = 4 * math.sin(col * 0.2) * math.cos(row * 0.18)
-        return int(max(0, min(255, round(FLOOR_H + roll))))
-    # Rise sharply into cliff tops
-    h = FLOOR_H + t * t * (CLIFF_H - FLOOR_H)
-    return int(max(0, min(255, round(h))))
-
-
-def qh(h: int) -> int:
-    return int(round(h / 8.0) * 8)
-
-
-def make_height_tile(h00: int, h10: int, h01: int, h11: int) -> bytes:
-    out = bytearray(TILE_PX * TILE_PX)
-    for y in range(TILE_PX):
-        v = y / (TILE_PX - 1)
-        for x in range(TILE_PX):
-            u = x / (TILE_PX - 1)
-            h = (
-                h00 * (1 - u) * (1 - v)
-                + h10 * u * (1 - v)
-                + h01 * (1 - u) * v
-                + h11 * u * v
-            )
-            out[y * TILE_PX + x] = max(0, min(255, int(round(h))))
-    return bytes(out)
-
-
-def pick_texture(col: int, row: int) -> int:
-    t = rim_t(col + 0.5, row + 0.5)
-    if t > 0.35:
-        return TEX_CLIFF[(col * 3 + row * 5) % len(TEX_CLIFF)]
-    # Mix many original grass tiles with a stable hash so it looks natural, not striped
-    h = (col * 73856093) ^ (row * 19349663)
-    return TEX_GRASS[h % len(TEX_GRASS)]
-
-
-def pick_path(col: int, row: int) -> int:
-    # Solid collision on the outer cliff band
-    dist = min(col, row, MAP_W - 1 - col, MAP_D - 1 - row)
-    if dist < CLIFF_DEPTH:
-        return PATH_SOLID_ALL
-    return 0
 
 
 def pack_item(x: int, y: int, typ: int, parm=(0, 0, 0, 0), flags=0) -> bytes:
@@ -158,112 +59,136 @@ def tile_center(col: int, row: int) -> tuple[int, int]:
     return col * TILE_PX + TILE_PX // 2, row * TILE_PX + TILE_PX // 2
 
 
-def build_items() -> list[bytes]:
-    cx, cz = MAP_W // 2, MAP_D // 2
+def build_items(floor_cells: list[tuple[int, int]]) -> list[bytes]:
+    """Place gameplay items on interior floor cells, sorted by X."""
+    # Prefer cells away from the rim
+    interior = [
+        (c, r)
+        for c, r in floor_cells
+        if 6 <= c < MAP_W - 6 and 6 <= r < MAP_D - 6
+    ]
+    if len(interior) < 20:
+        interior = floor_cells
+
+    def pick(frac_x: float, frac_z: float) -> tuple[int, int]:
+        tx = int(frac_x * (MAP_W - 1))
+        tz = int(frac_z * (MAP_D - 1))
+        return min(interior, key=lambda p: (p[0] - tx) ** 2 + (p[1] - tz) ** 2)
+
     raw: list[tuple[int, int, int, tuple[int, int, int, int]]] = []
 
     def add(col: int, row: int, typ: int, parm=(0, 0, 0, 0)) -> None:
         x, y = tile_center(col, row)
         raw.append((x, y, typ, parm))
 
-    add(cx, cz, ITEM_START)
-    add(cx, cz - 5, ITEM_PORTAL, (0, 0, 0, 0))
+    sc, sr = pick(0.50, 0.50)
+    add(sc, sr, ITEM_START)
+    add(*pick(0.50, 0.35), ITEM_PORTAL, (0, 0, 0, 0))
 
-    for col, row, species in [
-        (cx - 6, cz - 2, 0),
-        (cx + 7, cz - 3, 1),
-        (cx - 4, cz + 6, 2),
-        (cx + 5, cz + 7, 3),
-        (cx - 8, cz + 3, 4),
+    for fx, fz, species in [
+        (0.35, 0.45, 0),
+        (0.65, 0.40, 1),
+        (0.40, 0.65, 2),
+        (0.60, 0.70, 3),
+        (0.30, 0.60, 4),
     ]:
-        add(col, row, ITEM_EGG, (species, 0, 0, 1))
+        add(*pick(fx, fz), ITEM_EGG, (species, 0, 0, 1))
 
-    for col, row in [
-        (cx - 8, cz - 6),
-        (cx + 8, cz - 5),
-        (cx + 2, cz + 8),
-        (cx - 6, cz + 9),
-    ]:
-        add(col, row, ITEM_REX, (0, 0, 0, 1))
+    for fx, fz in [(0.30, 0.30), (0.70, 0.35), (0.55, 0.70), (0.35, 0.75)]:
+        add(*pick(fx, fz), ITEM_REX, (0, 0, 0, 1))
 
-    for col, row, kind in [
-        (cx + 3, cz - 2, POW_HEALTH),
-        (cx - 3, cz + 2, POW_LASER),
-        (cx + 6, cz + 4, POW_SHIELD),
-        (cx - 7, cz - 1, POW_HEATSEEK),
-        (cx + 1, cz + 5, POW_HEALTH),
+    for fx, fz, kind in [
+        (0.55, 0.45, POW_HEALTH),
+        (0.42, 0.55, POW_LASER),
+        (0.62, 0.58, POW_SHIELD),
+        (0.33, 0.48, POW_HEATSEEK),
+        (0.52, 0.62, POW_HEALTH),
     ]:
-        add(col, row, ITEM_POWERUP, (kind, 0, 0, 0))
+        add(*pick(fx, fz), ITEM_POWERUP, (kind, 0, 0, 0))
 
-    # Trees just inside the cliff rim
-    margin = CLIFF_DEPTH + 2
-    for col, row, tree_type in [
-        (margin + 1, cz - 4, 4),
-        (margin + 1, cz + 2, 0),
-        (margin + 2, cz + 6, 5),
-        (MAP_W - margin - 2, cz - 3, 4),
-        (MAP_W - margin - 2, cz + 1, 1),
-        (MAP_W - margin - 3, cz + 6, 5),
-        (cx - 3, margin + 1, 4),
-        (cx + 3, margin + 1, 0),
-        (cx - 2, MAP_D - margin - 2, 5),
-        (cx + 4, MAP_D - margin - 2, 4),
-        (margin + 3, margin + 3, 2),
-        (MAP_W - margin - 4, MAP_D - margin - 4, 2),
+    for fx, fz, tree_type in [
+        (0.22, 0.40, 4),
+        (0.20, 0.55, 0),
+        (0.25, 0.70, 5),
+        (0.78, 0.40, 4),
+        (0.80, 0.55, 1),
+        (0.75, 0.70, 5),
+        (0.40, 0.22, 4),
+        (0.60, 0.20, 0),
+        (0.40, 0.80, 5),
+        (0.60, 0.78, 4),
+        (0.25, 0.25, 2),
+        (0.75, 0.75, 2),
     ]:
-        add(col, row, ITEM_TREE, (tree_type, 0, 0, 0))
+        add(*pick(fx, fz), ITEM_TREE, (tree_type, 0, 0, 0))
 
-    for col, row in [
-        (cx - 5, cz - 8),
-        (cx + 5, cz - 7),
-        (cx - 8, cz + 5),
-        (cx + 8, cz + 6),
-        (cx, cz + 10),
-        (cx - 10, cz),
+    for fx, fz in [
+        (0.38, 0.32),
+        (0.62, 0.30),
+        (0.32, 0.62),
+        (0.68, 0.65),
+        (0.50, 0.72),
+        (0.28, 0.50),
     ]:
-        add(col, row, ITEM_BUSH, (0, 0, 0, 0))
+        add(*pick(fx, fz), ITEM_BUSH, (0, 0, 0, 0))
 
     raw.sort(key=lambda it: (it[0], it[1]))
     return [pack_item(x, y, typ, parm) for x, y, typ, parm in raw]
 
 
+def write_trt(path: Path) -> None:
+    shutil.copyfile(ORIG_DIR / "Level1.trt", path)
+    n = struct.unpack_from(">i", path.read_bytes(), 0)[0]
+    print(f"wrote {path} (original tileset, {n} tiles)")
+
+
 def write_ter(path: Path) -> None:
     assert MAP_W % SUPERTILE == 0 and MAP_D % SUPERTILE == 0
-    n_cells = MAP_W * MAP_D
-    tex_attrs = load_original_tex_attrs()
-    num_tex = len(tex_attrs) // 8
+    orig = (ORIG_DIR / "Level1.ter").read_bytes()
+    offs = struct.unpack_from(">7i2h2i", orig, 0)
+    ow, od = offs[7], offs[8]
+    assert CROP_COL + MAP_W <= ow and CROP_ROW + MAP_D <= od
 
-    verts = [
-        [qh(field_height(c, r)) for c in range(MAP_W + 1)]
-        for r in range(MAP_D + 1)
-    ]
+    tex_all = struct.unpack_from(f">{ow * od}H", orig, offs[0])
+    hm_all = struct.unpack_from(f">{ow * od}H", orig, offs[1])
+    path_all = struct.unpack_from(f">{ow * od}H", orig, offs[2])
+    hmt_off = offs[5]
+    tex_attrs = orig[offs[9] : offs[10]]
 
-    tex_layer = []
-    hm_layer = []
-    path_layer = []
+    tex_layer: list[int] = []
+    hm_layer: list[int] = []
+    path_layer: list[int] = []
     hm_tiles: list[bytes] = []
-    hm_cache: dict[tuple[int, int, int, int], int] = {}
+    hm_remap: dict[int, int] = {}
+    floor_cells: list[tuple[int, int]] = []
 
     for row in range(MAP_D):
         for col in range(MAP_W):
-            tid = pick_texture(col, row) & 0x0FFF
-            assert tid < num_tex
-            tex_layer.append(tid)
+            src = (CROP_ROW + row) * ow + (CROP_COL + col)
+            tval = tex_all[src]  # keep flip/rot bits
+            hval = hm_all[src]
+            pval = path_all[src]
+            hid = hval & 0x0FFF
+            flags = hval & 0xF000
 
-            key = (
-                verts[row][col],
-                verts[row][col + 1],
-                verts[row + 1][col],
-                verts[row + 1][col + 1],
-            )
-            if key not in hm_cache:
-                assert len(hm_tiles) < MAX_HM_TILES, "heightmap tile budget exceeded"
-                hm_cache[key] = len(hm_tiles)
-                hm_tiles.append(make_height_tile(*key))
-            hm_layer.append(hm_cache[key] & 0x0FFF)
-            path_layer.append(pick_path(col, row))
+            if hid not in hm_remap:
+                assert len(hm_tiles) < 300
+                hm_remap[hid] = len(hm_tiles)
+                blob = orig[hmt_off + hid * 1024 : hmt_off + (hid + 1) * 1024]
+                assert len(blob) == 1024
+                hm_tiles.append(blob)
 
-    items = build_items()
+            tex_layer.append(tval)
+            hm_layer.append(hm_remap[hid] | flags)
+            path_layer.append(pval)
+
+            # Floor = average height under ~120 (original flat floor tile is 85)
+            mean_h = sum(hm_tiles[hm_remap[hid]]) / 1024.0
+            if mean_h < 120 and pval == 0:
+                floor_cells.append((col, row))
+
+    items = build_items(floor_cells)
+    n_cells = MAP_W * MAP_D
 
     header_size = 40
     tex_off = header_size
@@ -302,8 +227,9 @@ def write_ter(path: Path) -> None:
     )
     path.write_bytes(header + body)
     print(
-        f"wrote {path} ({len(header)+len(body)} bytes) map={MAP_W}x{MAP_D} "
-        f"hm_tiles={len(hm_tiles)} items={len(items)} cliff={CLIFF_DEPTH}"
+        f"wrote {path} ({len(header)+len(body)} bytes) "
+        f"crop=({CROP_COL},{CROP_ROW}) {MAP_W}x{MAP_D} "
+        f"hm_tiles={len(hm_tiles)} floor_cells={len(floor_cells)} items={len(items)}"
     )
 
 

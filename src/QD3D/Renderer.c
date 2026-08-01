@@ -483,6 +483,8 @@ void Render_EndFrame(void)
 		DisableState(GL_SCISSOR_TEST);
 	}
 
+	DrawMinimap();
+
 #if ALLOW_FADE
 	// Draw fade overlay
 	if (gFadeOverlayOpacity > 0.01f)

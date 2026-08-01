@@ -185,6 +185,7 @@ TQ3ColorRGB		c2 = { 1, .9, .6 };
 	InitItemsManager();
 	InitMyInventory();	
 	InitInfobar();
+	InitMinimap();
 
 		
 		/* INIT THE PLAYER */
@@ -214,6 +215,7 @@ static void CleanupLevel(void)
 	Render_FreezeFrameFadeOut();
 	DeleteAllObjects();
 	FreeAllSkeletonFiles(-1);
+	DisposeMinimap();
 	DisposeTerrain();
 	DisposeSpriteGroup(0);
 	QD3D_DisposeShards();

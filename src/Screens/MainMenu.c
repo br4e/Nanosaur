@@ -80,6 +80,9 @@ TQ3Point3D			cameraFrom = { 0, 00, 600.0 };
 
 do_again:
 
+	gCurrentSelection = 0;			// Play is selected by default (one confirm starts the game)
+	gMainMenuWheelRot = 0;
+
 	MakeFadeEvent(true);
 
 			/**************/

@@ -374,14 +374,10 @@ unsigned long	someLong;
 	GetDateTime ((unsigned long *)(&someLong));		// init random seed
 	SetMyRandomSeed(someLong);
 	
-	ShowCharity();
-
 	LoadSoundBank();								// load sound bank for entire game
 
 	while(true)
 	{
-		DoPangeaLogo();
-		DoTitleScreen();
 		DoMainMenu();
 		PlayLevel();
 	}

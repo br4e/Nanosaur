@@ -26,7 +26,7 @@ extern	SDL_Window		*gSDLWindow;
 void SetProModeSettings(int pro)
 {
 	PRO_MODE					= pro;
-	SUPERTILE_ACTIVE_RANGE		= pro ? 4 : 3;
+	SUPERTILE_ACTIVE_RANGE		= pro ? 8 : 6;		// doubled draw distance (was 4 / 3)
 	MAX_ENEMIES					= pro ? 30 : 8;
 	MAX_PTERA					= pro ? 10 : 2;
 	MAX_REX						= pro ? 8 : 2;
@@ -34,7 +34,7 @@ void SetProModeSettings(int pro)
 	MAX_STEGO					= pro ? 10 : 2;
 	MAX_TRICER					= pro ? 10 : 3;
 	EXPLODEGEOMETRY_DENOMINATOR	= pro ? 2 : 4;
-	YON_DISTANCE				= pro ? 2800.0f : 1900.0f;
+	YON_DISTANCE				= pro ? 5600.0f : 3800.0f;	// doubled fog/draw yon (was 2800 / 1900)
 	SONIC_SCREAM_RATE			= pro ? 4 : 4;
 	BLASTER_RATE				= pro ? 7 : 4;
 	HEATSEEK_RATE				= pro ? 2 : 2;

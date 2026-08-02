@@ -59,7 +59,8 @@ FLOOR, LOW67, PAD109 = 3, 4, 5
 LK_SOFT, LK_SHELF, LK_DEEP, LK_BED = 6, 7, 8, 9
 LV_SOFT, LV_BED = 10, 11
 MD_RAMP, MD_PAD = 12, 13
-N_KINDS = 14
+LOW_RAMP, PAD_RAMP = 14, 15
+N_KINDS = 16
 
 # (lo, hi) plateau range each kind spans (heightmap pixel values, worldY = px*4)
 KIND_RANGE = {
@@ -68,6 +69,7 @@ KIND_RANGE = {
     LK_SOFT: (67, 85), LK_SHELF: (67, 67), LK_DEEP: (41, 67), LK_BED: (41, 41),
     LV_SOFT: (67, 85), LV_BED: (67, 67),
     MD_RAMP: (85, 224), MD_PAD: (224, 224),
+    LOW_RAMP: (67, 85), PAD_RAMP: (85, 109),
 }
 FLAT_TILE = {CLIFF: 0, FLOOR: 6, LOW67: 7, PAD109: 5,
              LK_SHELF: 7, LK_BED: 8, LV_BED: 7, MD_PAD: 31}
@@ -77,6 +79,10 @@ RAMP_CANDIDATES = {
     LV_SOFT: (22, 37, 48, 38, 23),
     LK_DEEP: (24, 40, 39, 51, 35),
     MD_RAMP: (1, 32, 2, 17),
+    # Original Level 1 uses these gradual 85→109 transitions around its
+    # raised shelves; without them tile 5 forms a vertical ledge at tile 6.
+    LOW_RAMP: (22, 37, 48, 38, 23),
+    PAD_RAMP: (11, 12, 13, 26, 41, 86),
 }
 # Original Level1 cliff kit: 2-tile orth stacks + 3-tile diagonal stamps.
 # Facing = direction toward the low/walkable side.
@@ -104,7 +110,7 @@ KIT_HM_IDS = sorted(
     | {166, 167, 180, 181, 182, 217, 235}
 )
 
-WALKABLE_KINDS = {FLOOR, LOW67, PAD109}          # where regular items may go
+WALKABLE_KINDS = {FLOOR, LOW67, PAD109, LOW_RAMP, PAD_RAMP}
 BOWL_KINDS = {LK_SOFT, LK_SHELF, LK_DEEP, LK_BED, LV_SOFT, LV_BED}
 
 # ------------------------------------------------------------ biome geometry
@@ -226,6 +232,22 @@ def derive_hm_to_tex(orig):
         key = (v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1)
         counters.setdefault(key, Counter())[int(orig.tex[r, c])] += 1
     return {k: cnt.most_common(1)[0][0] for k, cnt in counters.items()}
+
+
+def derive_texture_palette(orig, hm_tid, limit=24, min_fraction=0.01):
+    """Weighted, common original textures used by one heightmap-tile class."""
+    mask = (orig.hm & 0x0FFF) == hm_tid
+    values = [int(v) for v in orig.tex[mask]]
+    by_id = Counter(v & 0x0FFF for v in values)
+    max_count = max(by_id.values())
+    palette = []
+    for tid, count in by_id.most_common(limit):
+        if count < len(values) * min_fraction:
+            continue
+        # Keep the common original flip for each distinct texture ID.
+        full = Counter(v for v in values if (v & 0x0FFF) == tid).most_common(1)[0][0]
+        palette.extend([full] * max(1, round(16 * count / max_count)))
+    return palette
 
 
 # =========================================================================
@@ -459,8 +481,12 @@ def build_geometry(rng):
 
     # subtle floor variation: raised 109 pads and 67 lows on plain floor
     interior = walk.copy()
+    # Build a cumulative wall buffer. Repeatedly intersecting with the same
+    # one-tile dilation only kept one tile clear despite the old comment.
+    wall_buffer = ~walk
     for _ in range(3):                    # keep 3 tiles from any wall/feature
-        interior &= ~dilate8(~walk)
+        wall_buffer = dilate8(wall_buffer)
+    interior &= ~wall_buffer
     interior &= ~feature
     cand = np.argwhere(interior)
     rng.shuffle(cand)
@@ -471,14 +497,28 @@ def build_geometry(rng):
         rad = rng.randint(2, 3)
         blob = ((cc - c) ** 2 + (rr - r) ** 2) <= rad * rad
         if np.all(kind[blob] == FLOOR) and not np.any(feature[blob]):
-            kind[blob] = PAD109 if placed % 2 == 0 else LOW67
-            feature |= dilate8(blob)
+            raised = placed % 2 == 0
+            collar = dilate8(blob) & ~blob & (kind == FLOOR) & ~feature
+            kind[blob] = PAD109 if raised else LOW67
+            kind[collar] = PAD_RAMP if raised else LOW_RAMP
+            feature |= dilate8(collar | blob)
             placed += 1
 
     # Raised pads must not sit against lake/lava ramps — that cracks the
     # walkable heightmap (109 plateau vs soft 67–85 skirts).
     near_bowl = dilate8(np.isin(kind, list(BOWL_KINDS)))
     kind[(kind == PAD109) & near_bowl] = FLOOR
+    kind[(kind == PAD_RAMP) & near_bowl] = FLOOR
+
+    # A collar can be clipped where a variation meets another reserved
+    # feature. Fill any remaining flat-to-plateau contact with the matching
+    # transition kind instead of leaving a one-tile ledge.
+    for plateau, ramp in ((LOW67, LOW_RAMP), (PAD109, PAD_RAMP)):
+        for r, c in zip(*np.nonzero(kind == plateau)):
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < D and 0 <= nc < W and kind[nr, nc] == FLOOR:
+                    kind[nr, nc] = ramp
 
     # biome index for every cell (nearest basin, normalized)
     dist = np.stack([
@@ -709,38 +749,6 @@ def stamp_cliff_kit(kind, walk):
             if ut in (166, 217, 0, 180):
                 hm[ur, uc] = pack_hm(up_tid, fx, fy)
 
-    # Collapse illegal double-thick lower orth stacks into lower+upper pairs.
-    ids = hm & 0x0FFF
-    for r in range(D - 1):
-        for c in range(W):
-            a, b = int(ids[r, c]), int(ids[r + 1, c])
-            if a != b or a not in (167, 235):
-                continue
-            if kind[r, c] != CRAMP_L or kind[r + 1, c] != CRAMP_L:
-                continue
-            # Northern cell becomes the matching upper tile.
-            fx = (int(hm[r + 1, c]) >> 15) & 1
-            fy = (int(hm[r + 1, c]) >> 14) & 1
-            up = 217 if a == 235 else 166
-            hm[r, c] = pack_hm(up, fx, fy)
-    for r in range(D):
-        for c in range(W - 1):
-            a, b = int(ids[r, c]), int(ids[r, c + 1])
-            if a != b or a not in (167, 235):
-                continue
-            if kind[r, c] != CRAMP_L or kind[r, c + 1] != CRAMP_L:
-                continue
-            fx = (int(hm[r, c]) >> 15) & 1
-            fy = (int(hm[r, c]) >> 14) & 1
-            # If both face E (fx=0), the western cell is toward cliff → make it upper.
-            # If both face W (fx=1), the eastern cell is toward cliff → make it upper.
-            up = 166
-            if fx == 0:
-                hm[r, c] = pack_hm(up, fx, fy)
-            else:
-                hm[r, c + 1] = pack_hm(up, fx, fy)
-            ids = hm & 0x0FFF
-
     # Final cleanup: any remaining 167|235 adjacency → convert to 181.
     for _ in range(2):
         ids = hm & 0x0FFF
@@ -770,6 +778,31 @@ def stamp_cliff_kit(kind, walk):
                     fx, fy = CLIFF_DIAG[tip]
                     hm[rr, c] = pack_hm(181, fx, fy)
                     break
+
+    # A valid orthogonal stack has a fixed across-wall orientation: 167→166
+    # runs west/east according to its X flip, while 235→217 runs north/south
+    # according to its Y flip.  The old "double-thick" pass rewrote normal
+    # along-wall runs; retain the valid runs and turn only the impossible
+    # crossing pairs into a diagonal lower tile.
+    ids = hm & 0x0FFF
+    for r, c in zip(*np.nonzero((ids == 167) | (ids == 235))):
+        tid = int(ids[r, c])
+        fx, fy = (int(hm[r, c]) >> 15) & 1, (int(hm[r, c]) >> 14) & 1
+        upper = 166 if tid == 167 else 217
+        expected = ((0, -1) if fx == 0 else (0, 1)) if tid == 167 else \
+                   ((-1, 0) if fy == 0 else (1, 0))
+        bad_crossing = False
+        for _name, dr, dc in CARD:
+            nr, nc = r + dr, c + dc
+            if (dr, dc) == expected or not inb(nr, nc):
+                continue
+            if (int(hm[nr, nc]) & 0x0FFF) == upper:
+                bad_crossing = True
+                break
+        if bad_crossing and kind[r, c] == CRAMP_L:
+            tip = LOW_TO_TIP.get(frozenset(lows_at(r, c)), "SW")
+            dfx, dfy = CLIFF_DIAG[tip]
+            hm[r, c] = pack_hm(181, dfx, dfy)
 
     return hm, assigned
 
@@ -809,11 +842,13 @@ def select_hm(kind, walk, stats, rng):
                 got = pack_hm(best[0], best[1], best[2])
                 cache[key] = got
             hm_grid[r, c] = got
-    # Cliff stamping can mark floor-adjacent cells; never leave kit tiles on flats.
+    # Keep the diagonal floor-side 182 stamp. It is a real Level 1 transition
+    # tile, not a misplaced wall: replacing it with flat tile 6 opens a large
+    # height seam between a cliff corner and its walkable floor.
     for r in range(D):
         for c in range(W):
             k = kind[r, c]
-            if k in FLAT_TILE:
+            if k in FLAT_TILE and (int(hm_grid[r, c]) & 0x0FFF) != 182:
                 hm_grid[r, c] = FLAT_TILE[k]
     repair_walkable_seams(hm_grid, kind, cliff_assigned, stats)
     return hm_grid
@@ -881,7 +916,7 @@ def repair_walkable_seams(hm_grid, kind, cliff_assigned, stats):
 # =========================================================================
 # Texture layer
 # =========================================================================
-def paint_textures(kind, hm_grid, biome_idx, hm2tex, rng):
+def paint_textures(kind, hm_grid, biome_idx, hm2tex, cliff_palette, rng):
     tex = np.zeros((D, W), np.uint16)
     near_lake = dilate8(dilate8(dilate8(np.isin(kind, list((LK_SOFT, LK_SHELF, LK_DEEP, LK_BED))))))
 
@@ -901,7 +936,7 @@ def paint_textures(kind, hm_grid, biome_idx, hm2tex, rng):
             if key[0] in (166, 167, 180, 181, 182, 217, 235):
                 tex[r, c] = hm2tex.get(key, weave(WALL_FALLBACK))
                 continue
-            if k in (FLOOR, LOW67, PAD109):
+            if k in (FLOOR, LOW67, PAD109, LOW_RAMP, PAD_RAMP):
                 if b == 0:
                     tex[r, c] = weave(SOUTH_GRASS)
                 elif b == 1:
@@ -913,7 +948,10 @@ def paint_textures(kind, hm_grid, biome_idx, hm2tex, rng):
                 else:
                     tex[r, c] = weave(NEST_WATERSIDE) if near_lake[r, c] else weave(SOUTH_GRASS)
             elif k == CLIFF:
-                tex[r, c] = weave(EMBER_MESA) if b == 2 else weave(SOUTH_GRASS)
+                # The original's high tile-0 plateau has varied earthy
+                # textures. Reuse that palette instead of covering nearly the
+                # entire outside map with four repeated grass tiles.
+                tex[r, c] = weave(EMBER_MESA) if b == 2 else weave(cliff_palette)
             elif k in (MD_RAMP, MD_PAD):
                 tex[r, c] = hm2tex.get(key, weave(WALL_FALLBACK))
             elif k == LK_BED:
@@ -951,7 +989,10 @@ class Placer:
         if (col, row) in self.occupied:
             return False
         for pc, pr in self.protected:
-            if (col - pc) ** 2 + (row - pr) ** 2 < 3 ** 2 and cat != "special":
+            # Eggs, portals, and the start all need real clearance too.
+            # Letting "special" placements bypass this was putting portals
+            # directly beside the start and replacing intended stepstones.
+            if (col - pc) ** 2 + (row - pr) ** 2 < 3 ** 2:
                 return False
         if cat in self.by_cat and nn > 0:
             for oc, orow in self.by_cat[cat]:
@@ -989,16 +1030,24 @@ class Placer:
         return placed
 
 
-def nearest_ok(placer, col, row, radius=12):
+def nearest_ok(placer, col, row, radius=12, avoid=(), clearance=0,
+               ignore_protected=False):
     """Nearest BFS-walkable plain-floor cell to (col,row)."""
     best, bd = None, 1e18
     for r in range(max(0, row - radius), min(D, row + radius + 1)):
         for c in range(max(0, col - radius), min(W, col + radius + 1)):
-            if (r, c) in placer.bfs and placer.kind[r, c] in WALKABLE_KINDS \
-                    and placer.cell_free(c, r, "special", 0):
-                d = (c - col) ** 2 + (r - row) ** 2
-                if d < bd:
-                    bd, best = d, (c, r)
+            if (r, c) not in placer.bfs or placer.kind[r, c] not in WALKABLE_KINDS:
+                continue
+            if not ignore_protected and not placer.cell_free(c, r, "special", 0):
+                continue
+            if ignore_protected and (c, r) in placer.occupied:
+                continue
+            if any((c - ac) ** 2 + (r - ar) ** 2 < clearance ** 2
+                   for ac, ar in avoid):
+                continue
+            d = (c - col) ** 2 + (r - row) ** 2
+            if d < bd:
+                bd, best = d, (c, r)
     if best is None:
         raise SystemExit(f"no walkable cell near ({col},{row})")
     return best
@@ -1055,12 +1104,18 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
 
     # ---------------- start / eggs / portals -----------------------------
     scol, srow = seed[1], seed[0]
+    # Reserve the start before placing eggs/portals. Ember eggs must use the
+    # small lava islands, so their stepstone decoration is added afterwards
+    # only where an egg has not claimed the center.
+    platform_centers = [(pc, pr) for pr, pc in ember_platforms]
+    P.protected.append((scol, srow))
     egg_anchor = {}
     egg_spots = {}
     EGG_MIN_DIST = 14          # tiles — eggs within a biome stay fairly far apart
 
     def place_egg_cluster(species, acol, arow, n_floor=5, preexisting=None):
-        acol, arow = nearest_ok(P, acol, arow)
+        # An anchor is only a radial reference; it may be a reserved platform.
+        acol, arow = nearest_ok(P, acol, arow, ignore_protected=True)
         egg_anchor[species] = (acol, arow)
         spots = list(preexisting or [])
         tries = 0
@@ -1129,10 +1184,15 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
 
     # portals near egg clusters (auto-snap)
     portal_biomes = [0, 1, 2, 4]
+    portal_avoid = [(scol, srow), *platform_centers]
+    for spots in egg_spots.values():
+        portal_avoid.extend(spots)
     for pn, bi in enumerate(portal_biomes):
         ac, ar = egg_anchor[bi]
-        c, r = nearest_ok(P, ac + 6, ar + 4)
+        c, r = nearest_ok(P, ac + 6, ar + 4, radius=24,
+                          avoid=portal_avoid, clearance=6)
         P.add(c, r, IT_PORTAL, (pn, 0, 0, 0), "special", protect=True)
+        portal_avoid.append((c, r))
 
     # ---------------- water / lava / step stones -------------------------
     # Water only in the deep basin — never on soft fringe or flat floor.
@@ -1147,30 +1207,48 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
         patch = kind[r0:r1, c0:c1]
         return bool(np.all(np.isin(patch, list(DEEP_BASIN))))
 
-    def patch_points(bed):
+    def lava_item_ok(r, c):
+        """Keep each fixed-height 8x8 lava mesh on the flat lava bed."""
+        r0, r1 = r - 3, r + 5
+        c0, c1 = c - 3, c + 5
+        return (r0 >= 0 and c0 >= 0 and r1 <= D and c1 <= W
+                and bool(np.all(kind[r0:r1, c0:c1] == LV_BED)))
+
+    def patch_points(bed, min_gap=8, footprint_ok=None):
+        """Non-overlapping centers for square 8x8 water/lava meshes."""
         cells = np.argwhere(bed)
         if len(cells) == 0:
             return []
+        if footprint_ok is not None:
+            candidates = [(int(r), int(c)) for r, c in cells if footprint_ok(int(r), int(c))]
+        else:
+            candidates = []
         r0, c0 = cells.min(axis=0)
         r1, c1 = cells.max(axis=0)
         bedset = {(r, c) for r, c in cells}
-        pts = set()
-        for gr in range(r0 + 3, r1 + 1, 8):
-            for gc in range(c0 + 3, c1 + 1, 8):
-                best = min(bedset, key=lambda rc: (rc[0] - gr) ** 2 + (rc[1] - gc) ** 2)
-                pts.add(best)
-        pts.add(tuple(cells.mean(axis=0).astype(int)))
-        return sorted(p for p in pts if p in bedset)
+        if footprint_ok is None:
+            for gr in range(r0 + 3, r1 + 1, 8):
+                for gc in range(c0 + 3, c1 + 1, 8):
+                    best = min(bedset, key=lambda rc: (rc[0] - gr) ** 2 + (rc[1] - gc) ** 2)
+                    candidates.append(best)
+            candidates.append(tuple(cells.mean(axis=0).astype(int)))
+        accepted = []
+        for r, c in sorted(set(candidates)):
+            if (r, c) in bedset and all(
+                    max(abs(r - ar), abs(c - ac)) >= min_gap
+                    for ar, ac in accepted):
+                accepted.append((r, c))
+        return accepted
 
     for bi, bed in lake_cells:
-        for r, c in patch_points(bed):
-            if (c, r) not in P.occupied and water_item_ok(r, c):
+        for r, c in patch_points(bed, footprint_ok=water_item_ok):
+            if (c, r) not in P.occupied:
                 P.add(c, r, IT_WATER, (0, 0, 0, 0), "special")
             # if 8x8 won't fit, skip — never paint water onto flat surroundings
 
     for bed, fire in lava_cells:
-        for r, c in patch_points(bed):
-            if (c, r) not in P.occupied and kind[r, c] == LV_BED:
+        for r, c in patch_points(bed, footprint_ok=lava_item_ok):
+            if (c, r) not in P.occupied:
                 P.add(c, r, IT_LAVA, (0, 0, 0, 2 if fire else 0), "special")
 
     # Step-stone items on Ember jump platforms (not packed on lava).
@@ -1179,13 +1257,17 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
             P.add(pc, pr, IT_STEPSTONE, (0, 0, 0, 0), "special")
 
     # ---------------- powerups -------------------------------------------
+    # The original Level 1's main playable island has 86 pickups across
+    # ~20,900 walkable low tiles.  This level has ~5,900 such tiles, so keep
+    # the same cadence (about 22 pickups, including connector rewards) rather
+    # than cramming the original absolute count into the smaller arenas.
     POW_PLAN = [
-        (0, [POW_HEALTH] * 3 + [POW_LASER] * 3 + [POW_HEAT] * 2 + [POW_SHIELD] + [POW_TRI]),
-        (1, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEALTH] + [POW_HEAT]),
+        (0, [POW_HEALTH, POW_LASER, POW_HEAT, POW_SHIELD]),
+        (1, [POW_LASER, POW_TRI, POW_SONIC, POW_HEALTH]),
         # Ember is mostly lava — only a couple platform pickups fit.
         (2, [POW_HEALTH, POW_SHIELD]),
-        (3, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE]),
-        (4, [POW_HEALTH] * 2 + [POW_LASER] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE]),
+        (3, [POW_LASER, POW_TRI, POW_SONIC, POW_NUKE]),
+        (4, [POW_HEALTH, POW_LASER, POW_HEAT]),
     ]
     for bi, kinds_list in POW_PLAN:
         lst = list(kinds_list)
@@ -1194,39 +1276,56 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
                         lambda i, l=lst: (l[i], 0, 0, 0), "powerup", 6.0)
         if got < len(lst):
             raise SystemExit(f"powerup placement failed in biome {bi}")
-    conn_pows = [POW_HEALTH, POW_HEAT, POW_TRI, POW_SHIELD, POW_NUKE,
-                 POW_HEALTH, POW_HEAT, POW_TRI, POW_SHIELD, POW_TRI]
+    # One reward at each connector keeps travel useful without making every
+    # short canyon a dense pickup corridor.
+    conn_pows = [POW_HEALTH, POW_HEAT, POW_TRI, POW_SHIELD, POW_LASER]
     for i, pw in enumerate(conn_pows):
-        cells = conn_cells[i % len(conn_cells)]
+        cells = conn_cells[i]
         P.scatter(1, cells, IT_POWERUP, lambda _n, p=pw: (p, 0, 0, 0), "powerup", 6.0)
 
     # ---------------- enemies --------------------------------------------
+    # These totals are the original Level 1 main-island population scaled to
+    # Caldera Loop's playable area.  Keeping the original mix matters: rex
+    # and spitter pressure should dominate, without turning tiny Ember
+    # platforms into an enemy pile.
     ENEMY_PLAN = [
         (0, [(IT_STEGO, 5), (IT_REX, 4)]),
-        (1, [(IT_SPITTER, 20), (IT_PTERA, 4), (IT_STEGO, 4)]),
-        (2, [(IT_PTERA, 8), (IT_TRICER, 8), (IT_REX, 5)]),
-        (3, [(IT_SPITTER, 26), (IT_REX, 10)]),
-        (4, [(IT_PTERA, 12), (IT_REX, 10), (IT_SPITTER, 8), (IT_STEGO, 7), (IT_TRICER, 5)]),
+        (1, [(IT_SPITTER, 13), (IT_PTERA, 7), (IT_STEGO, 5), (IT_TRICER, 2), (IT_REX, 5)]),
+        (2, [(IT_PTERA, 2), (IT_TRICER, 2), (IT_REX, 4)]),
+        (3, [(IT_SPITTER, 10), (IT_REX, 13)]),
+        (4, [(IT_PTERA, 12), (IT_REX, 17), (IT_SPITTER, 15), (IT_STEGO, 11), (IT_TRICER, 11)]),
     ]
+    PRO_ENEMY_MULTIPLIER = {
+        # Ratios measured from original Level1Pro.ter versus Level1.ter.
+        IT_TRICER: 108 / 62,
+        IT_REX: 403 / 188,
+        IT_PTERA: 175 / 87,
+        IT_STEGO: 146 / 79,
+        IT_SPITTER: 430 / 155,
+    }
     enemy_counts = {}
     for bi, plan in ENEMY_PLAN:
         for et, n in plan:
             got = P.scatter(n, biome_cells[bi], et, lambda _n: (0, 0, 0, 0), "enemy", 2.0)
             enemy_counts[(bi, et)] = got
-            # pro extras: +30%
-            P.scatter(max(1, round(n * 0.3)), biome_cells[bi], et,
+            # Stock Pro is substantially harder, not merely 30% denser.
+            pro_extra = round(n * (PRO_ENEMY_MULTIPLIER[et] - 1.0))
+            P.scatter(pro_extra, biome_cells[bi], et,
                       lambda _n: (0, 0, 0, 0), "enemy", 2.0, pro_only=True)
     CONN_ENEMY = [IT_STEGO, IT_SPITTER, IT_PTERA, IT_REX, IT_REX]
     for i, cells in enumerate(conn_cells):
         P.scatter(rng.randint(2, 3), cells, CONN_ENEMY[i],
                   lambda _n: (0, 0, 0, 0), "enemy", 2.0)
 
-    # pro extra powerups (+30% of 95 ~ 28)
-    pro_pow = ([POW_LASER] * 6 + [POW_HEALTH] * 6 + [POW_HEAT] * 5 +
-               [POW_TRI] * 4 + [POW_SONIC] * 4 + [POW_SHIELD] * 2 + [POW_NUKE])
+    # Stock Pro triples the normal pickup density.  Its extra mix is mostly
+    # laser/tri/nuke (measured from the original pair of terrain files).
+    pro_pow = ([POW_TRI] * 14 + [POW_LASER] * 14 + [POW_NUKE] * 8 +
+               [POW_HEAT] * 6 + [POW_HEALTH] * 5 + [POW_SHIELD] * 4)
     rng.shuffle(pro_pow)
     for i, pw in enumerate(pro_pow):
-        P.scatter(1, biome_cells[i % 5], IT_POWERUP,
+        # Keep the tiny lava-platform biome out of the Pro overflow.
+        pro_biomes = (0, 1, 3, 4)
+        P.scatter(1, biome_cells[pro_biomes[i % len(pro_biomes)]], IT_POWERUP,
                   lambda _n, p=pw: (p, 0, 0, 0), "powerup", 6.0, pro_only=True)
 
     # ---------------- scenery --------------------------------------------
@@ -1250,18 +1349,16 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     P.scatter(4, biome_cells[3], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
     P.scatter(5, conn_cells[3], IT_ROLLBOULDER, lambda _n: (0, 0, 0, 0), "scenery", 2.0)
 
-    # gas vent cluster in Nest Caldera
+    # Gas vent cluster in Nest Caldera.  Fixed offsets frequently landed on
+    # eggs/reserved pads and silently produced a single vent.
     nx, nz = BIOMES[4][1]
-    gc, gr = nearest_ok(P, nx, nz)
-    placed = 0
-    for dc, dr in ((0, 0), (2, 1), (1, 3), (3, 3), (-1, 2)):
-        c, r = gc + dc, gr + dr
-        if 0 <= r < D and 0 <= c < W and (r, c) in P.bfs \
-                and kind[r, c] in WALKABLE_KINDS and P.cell_free(c, r, "scenery", 0):
-            P.add(c, r, IT_GASVENT, (0, 0, 0, 0), "scenery")
-            placed += 1
-        if placed >= 3:
-            break
+    vent_cells = [(r, c) for r, c in biome_cells[4]
+                  if (c - nx) ** 2 + (r - nz) ** 2 <= 10 ** 2]
+    rng.shuffle(vent_cells)
+    placed = P.scatter(3, vent_cells, IT_GASVENT,
+                       lambda _n: (0, 0, 0, 0), "scenery", 2.0)
+    if placed != 3:
+        raise SystemExit(f"gas vent placement failed (got {placed}/3)")
 
     return P, bfs, (scol, srow), enemy_counts, biome_cells
 
@@ -1592,6 +1689,8 @@ def main():
     orig = Original()
     stats = tile_stats(orig)
     hm2tex = derive_hm_to_tex(orig)
+    cliff_palette = derive_texture_palette(orig, 0)
+    assert cliff_palette, "original cliff texture palette is empty"
 
     # sanity of the kit tiles we rely on
     for tid, want in ((0, 255), (6, 85), (7, 67), (8, 41), (5, 109), (31, 224)):
@@ -1609,17 +1708,18 @@ def main():
         mean_map[hm_grid == v] = stats[(v & 0xFFF, (v >> 15) & 1, (v >> 14) & 1)][2]
 
     # Original cliff path grammar: lower band = 43 (slope), upper/cliff = 9.
-    # Floor cells stamped with 182 keep path 0 so they stay walkable.
+    # The 181 diagonal is lower-band in this stencil, so it remains 43; 182
+    # is floor-side and stays path 0.
     hm_ids = hm_grid & 0x0FFF
     path_layer = np.zeros((D, W), np.uint16)
     path_layer[kind == CLIFF] = 9
     path_layer[kind == CRAMP_U] = 9
     path_layer[kind == CRAMP_L] = 43
-    # Upper / corner kit tiles are solid even if they sit on the lower band mask.
-    path_layer[np.isin(hm_ids, [166, 217, 180, 181])] = 9
+    # Upper kit tiles are solid even if they sit on the lower-band mask.
+    path_layer[np.isin(hm_ids, [166, 217, 180])] = 9
 
     print("painting textures ...")
-    tex = paint_textures(kind, hm_grid, biome_idx, hm2tex, rng)
+    tex = paint_textures(kind, hm_grid, biome_idx, hm2tex, cliff_palette, rng)
 
     print("placing items ...")
     P, bfs, start, enemy_counts, biome_cells = build_items(

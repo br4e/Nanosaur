@@ -85,40 +85,40 @@ WALKABLE_KINDS = {FLOOR, LOW67, PAD109}          # where regular items may go
 BOWL_KINDS = {LK_SOFT, LK_SHELF, LK_DEEP, LK_BED, LV_SOFT, LV_BED}
 
 # ------------------------------------------------------------ biome geometry
-# (name, center(col,row), radii(rx,rz))
+# (name, center(col,row), radii(rx,rz)) — compact arenas (~0.55x prior radii)
 BIOMES = [
-    ("Emerald Shallows", (62, 258), (50, 50)),
-    ("Fern Canyons",     (52, 118), (44, 60)),
-    ("Ember Flats",      (135, 57), (68, 44)),
-    ("Crystal Scar",     (216, 142), (46, 58)),
-    ("Nest Caldera",     (204, 272), (52, 50)),
+    ("Emerald Shallows", (62, 258), (28, 28)),
+    ("Fern Canyons",     (52, 118), (24, 34)),
+    ("Ember Flats",      (135, 57), (38, 26)),
+    ("Crystal Scar",     (216, 142), (26, 32)),
+    ("Nest Caldera",     (204, 272), (30, 28)),
 ]
-MESA = ((135, 180), (55, 65))
+MESA = ((135, 180), (48, 58))
 # connectors: polyline points (col,row); pocket positions t in 0..1
+# endpoints reach into the smaller basins so the ring stays connected
 CONNECTORS = [
-    ("Shallows->Fern",  [(58, 215), (48, 175), (50, 150)], (0.35, 0.72)),
-    ("Fern->Ember",     [(68, 85), (85, 72), (105, 60)],   (0.4,)),
-    ("Ember->Crystal",  [(185, 70), (208, 85), (215, 105)], (0.3, 0.7)),
-    ("Crystal->Nest",   [(222, 190), (228, 210), (215, 235)], (0.5,)),
-    ("Nest->Shallows",  [(165, 295), (135, 298), (100, 285)], (0.3, 0.7)),
+    ("Shallows->Fern",  [(60, 238), (48, 175), (50, 140)], (0.35, 0.72)),
+    ("Fern->Ember",     [(60, 95), (85, 72), (115, 60)],   (0.4,)),
+    ("Ember->Crystal",  [(165, 60), (200, 85), (210, 120)], (0.3, 0.7)),
+    ("Crystal->Nest",   [(220, 165), (228, 210), (215, 250)], (0.5,)),
+    ("Nest->Shallows",  [(180, 285), (135, 290), (85, 275)], (0.3, 0.7)),
 ]
-FERN_BLOBS = [(38, 92, 7), (66, 110, 7), (44, 140, 8), (63, 154, 6)]
+FERN_BLOBS = [(40, 100, 5), (62, 115, 5), (44, 135, 6), (60, 145, 4)]
 
-# lakes: (biome_idx, col, row, rx, rz)
+# lakes: (biome_idx, col, row, rx, rz) — pulled toward biome centers
 LAKES = [
-    (0, 45, 245, 4, 3), (0, 76, 271, 5, 4), (0, 57, 287, 3, 3),
-    (3, 202, 118, 3, 3), (3, 231, 166, 3, 2),
-    (4, 195, 262, 7, 5),
+    (0, 50, 248, 3, 2), (0, 72, 262, 3, 2), (0, 58, 272, 2, 2),
+    (3, 208, 130, 2, 2), (3, 224, 152, 2, 2),
+    (4, 200, 268, 4, 3),
 ]
 # lava pools in Ember: (col,row,rx,rz, fireballs)
 LAVA_POOLS = [
-    (135, 45, 9, 5, True),      # the big field (gets step stones)
-    (100, 40, 3, 2, True), (115, 70, 3, 3, True), (157, 72, 3, 2, True),
-    (172, 40, 4, 3, True), (90, 62, 2, 2, False), (120, 28, 3, 2, True),
-    (152, 30, 3, 2, False), (188, 55, 3, 3, True), (78, 45, 2, 2, True),
+    (135, 50, 6, 4, True),      # the big field (gets step stones)
+    (120, 48, 2, 2, True), (148, 48, 2, 2, True), (125, 65, 2, 2, True),
+    (145, 68, 2, 2, True), (112, 58, 2, 2, False), (155, 55, 2, 2, True),
 ]
 # nest pad complexes: top-left cell of the 2x2 pad (ring adds 1 cell around)
-NEST_PADS = [(170, 285), (183, 300), (216, 297), (228, 262), (225, 240)]
+NEST_PADS = [(188, 280), (198, 288), (214, 282), (220, 268), (212, 258)]
 
 # ------------------------------------------------------------ texture weaves
 SOUTH_GRASS = [189, 190, 200, 201]
@@ -517,7 +517,7 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     start_tile = nearest_start = None
 
     # start position: south part of Emerald Shallows
-    sc, sr = 66, 274
+    sc, sr = 64, 268
     # BFS from a seed near start
     seed = None
     for rad in range(0, 20):
@@ -586,16 +586,16 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
         egg_spots[species] = spots
 
     # species 0..3 on floor in their biomes
-    place_egg_cluster(0, 52, 246)
-    place_egg_cluster(1, 46, 112)
-    place_egg_cluster(2, 133, 62)
-    place_egg_cluster(3, 214, 140)
+    place_egg_cluster(0, 55, 250)
+    place_egg_cluster(1, 48, 115)
+    place_egg_cluster(2, 135, 60)
+    place_egg_cluster(3, 216, 142)
     # species 4: 2 on nest pads, 3 on floor
     pads_for_eggs = pad_cells[:2]
     for pr, pc in pads_for_eggs:
         P.add(pc, pr, IT_EGG, (4, 0, 0, 1), "special", protect=True)
-    place_egg_cluster(4, 200, 282, n_floor=3)
-    egg_anchor[4] = (200, 282)
+    place_egg_cluster(4, 200, 275, n_floor=3)
+    egg_anchor[4] = (200, 275)
 
     # start (aim: forward = (-sin(aim*45), -cos(aim*45)) in (x,z))
     dcol = egg_anchor[0][0] - scol
@@ -603,8 +603,8 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     aim = round(math.atan2(-dcol, -drow) / (math.tau / 8)) % 8
     P.add(scol, srow, IT_START, (aim, 0, 0, 0), "special", protect=True)
 
-    # portals 0..3 in Shallows, Fern, Ember, Nest, ~20-35 tiles from egg cluster
-    portal_want = [(0, 85, 235), (1, 62, 145), (2, 160, 42), (4, 225, 285)]
+    # portals 0..3 in Shallows, Fern, Ember, Nest, near egg clusters
+    portal_want = [(0, 72, 248), (1, 58, 130), (2, 150, 55), (4, 215, 275)]
     for pn, (bi, c, r) in enumerate(portal_want):
         c, r = nearest_ok(P, c, r)
         d = math.dist((c, r), egg_anchor[bi if bi != 4 else 4])
@@ -660,11 +660,11 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
 
     # ---------------- powerups -------------------------------------------
     POW_PLAN = [
-        (0, [POW_HEALTH] * 6 + [POW_LASER] * 6 + [POW_HEAT] * 5 + [POW_SHIELD] * 2 + [POW_TRI]),
-        (1, [POW_LASER] * 3 + [POW_TRI] * 3 + [POW_SONIC] * 3 + [POW_HEALTH] * 2 + [POW_HEAT] * 2),
-        (2, [POW_HEALTH] * 3 + [POW_LASER] * 3 + [POW_TRI] * 3 + [POW_SONIC] * 2 + [POW_NUKE, POW_SHIELD]),
-        (3, [POW_LASER] * 4 + [POW_TRI] * 3 + [POW_SONIC] * 3 + [POW_HEAT] * 2 + [POW_NUKE, POW_SHIELD]),
-        (4, [POW_HEALTH] * 4 + [POW_LASER] * 3 + [POW_SONIC] * 3 + [POW_HEAT] * 3 + [POW_NUKE] * 2),
+        (0, [POW_HEALTH] * 4 + [POW_LASER] * 4 + [POW_HEAT] * 3 + [POW_SHIELD] + [POW_TRI]),
+        (1, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEALTH] * 2 + [POW_HEAT]),
+        (2, [POW_HEALTH] * 2 + [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] + [POW_NUKE, POW_SHIELD]),
+        (3, [POW_LASER] * 3 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE, POW_SHIELD]),
+        (4, [POW_HEALTH] * 3 + [POW_LASER] * 2 + [POW_SONIC] * 2 + [POW_HEAT] * 2 + [POW_NUKE]),
     ]
     for bi, kinds_list in POW_PLAN:
         lst = list(kinds_list)
@@ -681,11 +681,11 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
 
     # ---------------- enemies --------------------------------------------
     ENEMY_PLAN = [
-        (0, [(IT_STEGO, 18), (IT_REX, 11)]),
-        (1, [(IT_SPITTER, 66), (IT_PTERA, 13), (IT_STEGO, 11)]),
-        (2, [(IT_PTERA, 26), (IT_TRICER, 26), (IT_REX, 18)]),
-        (3, [(IT_SPITTER, 88), (IT_REX, 33)]),
-        (4, [(IT_PTERA, 40), (IT_REX, 33), (IT_SPITTER, 26), (IT_STEGO, 22), (IT_TRICER, 18)]),
+        (0, [(IT_STEGO, 9), (IT_REX, 6)]),
+        (1, [(IT_SPITTER, 33), (IT_PTERA, 7), (IT_STEGO, 6)]),
+        (2, [(IT_PTERA, 13), (IT_TRICER, 13), (IT_REX, 9)]),
+        (3, [(IT_SPITTER, 44), (IT_REX, 17)]),
+        (4, [(IT_PTERA, 20), (IT_REX, 17), (IT_SPITTER, 13), (IT_STEGO, 11), (IT_TRICER, 9)]),
     ]
     enemy_counts = {}
     for bi, plan in ENEMY_PLAN:
@@ -713,24 +713,24 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
         P.scatter(n, biome_cells[bi], IT_TREE,
                   lambda _n: (rng.choice(types), 0, 0, 0), "tree", nn)
 
-    trees(0, 110, (0, 1), 3.0)
-    trees(1, 150, (0, 1, 4), 3.0)
-    trees(2, 15, (1,), 4.0)
-    trees(3, 80, (1, 4), 4.0)
-    trees(4, 60, (0, 1, 4), 3.5)
+    trees(0, 55, (0, 1), 3.0)
+    trees(1, 75, (0, 1, 4), 3.0)
+    trees(2, 10, (1,), 4.0)
+    trees(3, 40, (1, 4), 4.0)
+    trees(4, 30, (0, 1, 4), 3.5)
 
-    P.scatter(15, biome_cells[0], IT_MUSHROOM, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
-    P.scatter(20, biome_cells[0], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
-    P.scatter(25, biome_cells[1], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
-    P.scatter(8, biome_cells[2], IT_BUSH, lambda _n: (0, 0, 0, 1), "scenery", 4.0)
-    P.scatter(24, biome_cells[3], IT_CRYSTAL,
+    P.scatter(10, biome_cells[0], IT_MUSHROOM, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
+    P.scatter(12, biome_cells[0], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
+    P.scatter(14, biome_cells[1], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
+    P.scatter(6, biome_cells[2], IT_BUSH, lambda _n: (0, 0, 0, 1), "scenery", 4.0)
+    P.scatter(16, biome_cells[3], IT_CRYSTAL,
               lambda i: (i % 3, 0, 0, 0), "scenery", 4.0)
-    P.scatter(10, biome_cells[2], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 4.0)
-    P.scatter(10, biome_cells[3], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 4.0)
+    P.scatter(6, biome_cells[2], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 4.0)
+    P.scatter(6, biome_cells[3], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 4.0)
     P.scatter(5, conn_cells[3], IT_ROLLBOULDER, lambda _n: (0, 0, 0, 0), "scenery", 2.0)
 
     # gas vent cluster in Nest Caldera
-    gc, gr = nearest_ok(P, 212, 268)
+    gc, gr = nearest_ok(P, 208, 270)
     placed = 0
     for dc, dr in ((0, 0), (2, 1), (1, 3), (3, 3), (-1, 2)):
         c, r = gc + dc, gr + dr

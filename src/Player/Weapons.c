@@ -546,7 +546,7 @@ float	x,y,z,fps;
 
 			/* DECAY IT */
 
-	theNode->Health -= .9 * fps;
+	theNode->Health -= .6 * fps;				// 1.5x travel distance before despawn
 	if (theNode->Health < 0)
 	{
 		DeleteObject(theNode);

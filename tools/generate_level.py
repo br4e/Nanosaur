@@ -449,8 +449,8 @@ def build_geometry(rng):
         block[r - 1:r + 3, c - 1:c + 3] = True
         if not ring_ok(block):
             continue
-        # keep pads apart
-        if any((r - pr) ** 2 + (c - pc) ** 2 < 36 for pr, pc in pad_cells):
+        # keep pads at least egg-spacing apart so nest eggs stay far
+        if any((r - pr) ** 2 + (c - pc) ** 2 < 14 * 14 for pr, pc in pad_cells):
             continue
         kind[r - 1:r + 3, c - 1:c + 3] = MD_RAMP
         kind[r:r + 2, c:c + 2] = MD_PAD
@@ -1059,10 +1059,10 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     egg_spots = {}
     EGG_MIN_DIST = 14          # tiles — eggs within a biome stay fairly far apart
 
-    def place_egg_cluster(species, acol, arow, n_floor=5):
+    def place_egg_cluster(species, acol, arow, n_floor=5, preexisting=None):
         acol, arow = nearest_ok(P, acol, arow)
         egg_anchor[species] = (acol, arow)
-        spots = []
+        spots = list(preexisting or [])
         tries = 0
         while len(spots) < n_floor and tries < 8000:
             tries += 1
@@ -1085,10 +1085,10 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
             tries = 0
             while len(spots) < n_floor and tries < 8000:
                 tries += 1
-                if not biome_cells[species if species < 5 else 4]:
+                bi = species if species < 4 else 4
+                if not biome_cells[bi]:
                     break
-                r, c = biome_cells[species if species < 4 else 4][
-                    rng.randrange(len(biome_cells[species if species < 4 else 4]))]
+                r, c = biome_cells[bi][rng.randrange(len(biome_cells[bi]))]
                 c, r = int(c), int(r)
                 if (r, c) not in P.bfs or kind[r, c] not in WALKABLE_KINDS:
                     continue
@@ -1101,19 +1101,25 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
         if len(spots) < n_floor:
             raise SystemExit(f"could not cluster eggs for species {species} "
                              f"(got {len(spots)})")
+        # Only add newly chosen spots (preexisting already in the level).
+        pre = set(preexisting or [])
         for c, r in spots:
+            if (c, r) in pre:
+                continue
             P.add(c, r, IT_EGG, (species, 0, 0, 1), "special", protect=True)
         egg_spots[species] = spots
 
     # species 0..3 near each biome center (auto-snapped)
     for sp, (name, (cx, cz), _) in enumerate(BIOMES[:4]):
         place_egg_cluster(sp, cx, cz)
-    # species 4: 2 on nest pads, 3 on floor
+    # species 4: 2 on nest pads, 3 on floor — all share the same min spacing
     pads_for_eggs = pad_cells[:2]
+    pad_spots = []
     for pr, pc in pads_for_eggs:
         P.add(pc, pr, IT_EGG, (4, 0, 0, 1), "special", protect=True)
+        pad_spots.append((pc, pr))
     nx, nz = BIOMES[4][1]
-    place_egg_cluster(4, nx, nz, n_floor=3)
+    place_egg_cluster(4, nx, nz, n_floor=5, preexisting=pad_spots)
 
     # start: aim toward Ember's egg cluster (species 2)
     dcol = egg_anchor[2][0] - scol
@@ -1176,17 +1182,16 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     POW_PLAN = [
         (0, [POW_HEALTH] * 3 + [POW_LASER] * 3 + [POW_HEAT] * 2 + [POW_SHIELD] + [POW_TRI]),
         (1, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEALTH] + [POW_HEAT]),
-        # Ember is mostly lava — only a few platform pickups fit.
-        (2, [POW_HEALTH, POW_LASER, POW_SHIELD]),
+        # Ember is mostly lava — only a couple platform pickups fit.
+        (2, [POW_HEALTH, POW_SHIELD]),
         (3, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE]),
         (4, [POW_HEALTH] * 2 + [POW_LASER] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE]),
     ]
     for bi, kinds_list in POW_PLAN:
         lst = list(kinds_list)
         rng.shuffle(lst)
-        nn = 3.0 if bi == EMBER_BIOME else 6.0
         got = P.scatter(len(lst), biome_cells[bi], IT_POWERUP,
-                        lambda i, l=lst: (l[i], 0, 0, 0), "powerup", nn)
+                        lambda i, l=lst: (l[i], 0, 0, 0), "powerup", 6.0)
         if got < len(lst):
             raise SystemExit(f"powerup placement failed in biome {bi}")
     conn_pows = [POW_HEALTH, POW_HEAT, POW_TRI, POW_SHIELD, POW_NUKE,

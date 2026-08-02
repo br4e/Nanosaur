@@ -127,19 +127,21 @@ CONNECTORS = [
 ]
 FERN_BLOBS = [(90, 145, 3), (102, 155, 3), (92, 160, 4), (100, 165, 3)]
 
-# lakes: (biome_idx, col, row, rx, rz)
-LAKES = [
-    (0, 101, 216, 2, 1),
-    (3, 172, 162, 1, 1),
-    (4, 166, 218, 2, 1),
+# Feature intents — positions are auto-snapped onto real floor after geometry.
+# Lakes: (biome_idx, half_w, half_h) — rectangular deep beds so an 8x8 water
+# item fits entirely in LK_BED (never on soft fringe / flat floor).
+LAKE_INTENTS = [
+    (0, 5, 5),   # 11x11 bed
+    (3, 5, 4),
+    (4, 5, 5),
 ]
-# lava pools in Ember: (col,row,rx,rz, fireballs)
-LAVA_POOLS = [
-    (135, 122, 3, 2, True),      # the big field (gets step stones)
-    (128, 128, 1, 1, True), (142, 128, 1, 1, True),
-]
-# nest pad complexes: top-left cell of the 2x2 pad (ring adds 1 cell around)
-NEST_PADS = [(160, 228), (170, 228)]
+# Ember lava: cover most of biome 2; sparse jump platforms farther apart.
+EMBER_BIOME = 2
+EMBER_PLATFORM_COUNT = 6          # including the start island
+EMBER_PLATFORM_MIN_GAP = 14       # tiles between platform centers
+EMBER_PLATFORM_RADIUS = 1         # 3x3 floor islands
+# Nest pads: how many to try in Nest Caldera (biome 4)
+NEST_PAD_COUNT = 2
 
 # ------------------------------------------------------------ texture weaves
 SOUTH_GRASS = [189, 190, 200, 201]
@@ -300,43 +302,160 @@ def build_geometry(rng):
     feature = np.zeros((D, W), bool)     # cells reserved by lakes/lava/pads
 
     def ring_ok(mask):
-        return bool(np.all(kind[mask] == FLOOR) and not np.any(feature[mask]))
+        return bool(mask.any() and np.all(kind[mask] == FLOOR) and not np.any(feature[mask]))
+
+    def biome_floor_cells(bi, margin=3):
+        """Interior floor cells of a biome, kept clear of walls."""
+        bx, bz = BIOMES[bi][1]
+        rx, rz = BIOMES[bi][2]
+        interior = walk & ellipse(bx, bz, max(1, rx - margin), max(1, rz - margin))
+        interior &= (kind == FLOOR) & ~feature
+        # also keep a 1-tile buffer from non-floor
+        interior &= ~dilate8(kind != FLOOR)
+        return np.argwhere(interior)
+
+    def core_fits_water(bed, deep):
+        """True if some 8x8 window lies entirely in the deep basin (bed|deep)."""
+        core = bed | deep
+        rows, cols = np.where(core)
+        if len(rows) == 0:
+            return False
+        r0, r1 = int(rows.min()), int(rows.max()) + 1
+        c0, c1 = int(cols.min()), int(cols.max()) + 1
+        for r in range(r0, r1 - 7):
+            for c in range(c0, c1 - 7):
+                if np.all(core[r:r + 8, c:c + 8]):
+                    return True
+        return False
+
+    def try_lake_at(cx, cz, hw, hh):
+        # Rectangular deep bed — axis-aligned so an 8x8 water item can sit inside.
+        bed = ((np.abs(cc - cx) <= hw) & (np.abs(rr - cz) <= hh))
+        deep = dilate8(bed) & ~bed
+        shelf = dilate8(bed | deep) & ~(bed | deep)
+        soft = dilate8(bed | deep | shelf) & ~(bed | deep | shelf)
+        # Soft is optional edge paint; only the carved basin must be clear floor.
+        if not ring_ok(bed | deep | shelf):
+            return None
+        soft = soft & (kind == FLOOR) & ~feature
+        if not core_fits_water(bed, deep):
+            return None
+        return bed, deep, shelf, soft, (bed | deep | shelf | soft)
+
+    def place_lake(bi, hw, hh):
+        """Search biome floor for a recessed lake footprint; prefer near center."""
+        nonlocal feature
+        bx, bz = BIOMES[bi][1]
+        cells = biome_floor_cells(bi, margin=max(hw, hh) + 3)
+        if len(cells) == 0:
+            return None
+        # Sort by distance to biome center so lakes prefer the basin middle.
+        order = sorted(range(len(cells)),
+                       key=lambda i: (cells[i][1] - bx) ** 2 + (cells[i][0] - bz) ** 2)
+        trials = order[:40] + order[40::max(1, len(order) // 30)]
+        rng.shuffle(trials[5:])
+        for i in trials:
+            r, c = int(cells[i][0]), int(cells[i][1])
+            got = try_lake_at(c, r, hw, hh)
+            if got is None and (hw > 4 or hh > 4):
+                got = try_lake_at(c, r, max(4, hw - 1), max(4, hh - 1))
+            if got is None:
+                continue
+            bed, deep, shelf, soft, whole = got
+            kind[bed], kind[deep], kind[shelf], kind[soft] = (
+                LK_BED, LK_DEEP, LK_SHELF, LK_SOFT)
+            feature |= dilate8(dilate8(whole))
+            return bed
+        return None
 
     lake_cells = []
-    for bi, cx, cz, rx, rz in LAKES:
-        bed = ellipse(cx, cz, rx, rz)
-        deep = dilate8(bed) & ~bed
-        shelf = dilate8(dilate8(bed)) & ~bed & ~deep
-        soft = dilate8(dilate8(dilate8(bed))) & ~bed & ~deep & ~shelf
-        whole = bed | deep | shelf | soft
-        if not ring_ok(whole):
-            raise SystemExit(f"lake at ({cx},{cz}) does not fit on plain floor")
-        kind[bed], kind[deep], kind[shelf], kind[soft] = LK_BED, LK_DEEP, LK_SHELF, LK_SOFT
-        feature |= dilate8(dilate8(whole))
-        lake_cells.append((bi, bed))
+    for bi, rx, rz in LAKE_INTENTS:
+        bed = place_lake(bi, rx, rz)
+        if bed is not None:
+            lake_cells.append((bi, bed))
+        else:
+            print(f"  warn: could not place lake intent biome={bi} size=({rx},{rz})")
 
+    # ---- Ember Flats: lava covers most of the biome; sparse jump platforms ----
     lava_cells = []
-    for cx, cz, rx, rz, fire in LAVA_POOLS:
-        bed = ellipse(cx, cz, rx, rz)
-        soft = dilate8(bed) & ~bed
-        whole = bed | soft
-        if not ring_ok(whole):
-            raise SystemExit(f"lava at ({cx},{cz}) does not fit on plain floor")
-        kind[bed], kind[soft] = LV_BED, LV_SOFT
-        feature |= dilate8(dilate8(whole))
-        lava_cells.append((bed, fire))
+    ember_platforms = []  # (r, c) centers of floor islands
+    bi = EMBER_BIOME
+    bx, bz = BIOMES[bi][1]
+    ember_mask = walk & ellipse(bx, bz, BIOMES[bi][2][0], BIOMES[bi][2][1])
+    ember_floor = ember_mask & (kind == FLOOR) & ~feature
 
+    cand = np.argwhere(ember_floor)
+    rng.shuffle(cand)
+
+    def far_enough(cr, cc0, existing, gap=EMBER_PLATFORM_MIN_GAP):
+        for er, ec in existing:
+            if (cr - er) ** 2 + (cc0 - ec) ** 2 < gap * gap:
+                return False
+        return True
+
+    # Prefer start-friendly south/east island first, then spread.
+    seed_plats = [
+        (bz + BIOMES[bi][2][1] // 3, bx + BIOMES[bi][2][0] // 4),
+        (bz, bx), (bz - 4, bx - 6), (bz - 4, bx + 6),
+        (bz + 4, bx), (bz, bx - 8), (bz, bx + 8),
+    ]
+    for cr, cc0 in seed_plats + [tuple(x) for x in cand]:
+        if len(ember_platforms) >= EMBER_PLATFORM_COUNT or len(cand) == 0:
+            break
+        cr, cc0 = int(cr), int(cc0)
+        d2 = (cand[:, 0] - cr) ** 2 + (cand[:, 1] - cc0) ** 2
+        i = int(np.argmin(d2))
+        pr, pc = int(cand[i][0]), int(cand[i][1])
+        foot = ((rr - pr) ** 2 + (cc - pc) ** 2) <= EMBER_PLATFORM_RADIUS ** 2
+        if not (np.all(kind[foot] == FLOOR) and not np.any(feature[foot])):
+            continue
+        if not far_enough(pr, pc, ember_platforms):
+            continue
+        ember_platforms.append((pr, pc))
+
+    plat_union = np.zeros((D, W), bool)
+    for pr, pc in ember_platforms:
+        foot = ((rr - pr) ** 2 + (cc - pc) ** 2) <= EMBER_PLATFORM_RADIUS ** 2
+        plat_union |= foot
+
+    # Flood remaining ember floor with recessed lava (core bed + soft fringe).
+    lava_area = ember_floor & ~plat_union
+    if lava_area.any():
+        core = lava_area & ~dilate8(~lava_area)
+        if int(core.sum()) < 8:
+            core = lava_area
+        soft = dilate8(core) & ~core & (kind == FLOOR) & ~plat_union
+        leftover = lava_area & ~core & ~soft & (kind == FLOOR)
+        kind[core] = LV_BED
+        kind[soft | leftover] = LV_SOFT
+        feature |= dilate8(core | soft | leftover | plat_union)
+        lava_cells.append((core, True))
+    print(f"  ember platforms={len(ember_platforms)} lava_core="
+          f"{int(lava_cells[0][0].sum()) if lava_cells else 0}")
+
+    # ---- Nest pads: auto-snap into Nest Caldera floor ----
     pad_cells = []
-    for c0, r0 in NEST_PADS:
-        rows, cols = slice(r0 - 1, r0 + 3), slice(c0 - 1, c0 + 3)
+    nest_bi = 4
+    nest_cands = biome_floor_cells(nest_bi, margin=4)
+    rng.shuffle(nest_cands)
+    for r, c in nest_cands:
+        if len(pad_cells) >= NEST_PAD_COUNT:
+            break
+        r, c = int(r), int(c)
+        # 2x2 pad with 1-tile ramp ring → block [r-1:r+3, c-1:c+3]
+        if not (1 <= r < D - 3 and 1 <= c < W - 3):
+            continue
         block = np.zeros((D, W), bool)
-        block[rows, cols] = True
+        block[r - 1:r + 3, c - 1:c + 3] = True
         if not ring_ok(block):
-            raise SystemExit(f"nest pad at ({c0},{r0}) does not fit on plain floor")
-        kind[rows, cols] = MD_RAMP
-        kind[r0:r0 + 2, c0:c0 + 2] = MD_PAD
+            continue
+        # keep pads apart
+        if any((r - pr) ** 2 + (c - pc) ** 2 < 36 for pr, pc in pad_cells):
+            continue
+        kind[r - 1:r + 3, c - 1:c + 3] = MD_RAMP
+        kind[r:r + 2, c:c + 2] = MD_PAD
         feature |= dilate8(block)
-        pad_cells.append((r0, c0))
+        pad_cells.append((r, c))
 
     # subtle floor variation: raised 109 pads and 67 lows on plain floor
     interior = walk.copy()
@@ -356,13 +475,18 @@ def build_geometry(rng):
             feature |= dilate8(blob)
             placed += 1
 
+    # Raised pads must not sit against lake/lava ramps — that cracks the
+    # walkable heightmap (109 plateau vs soft 67–85 skirts).
+    near_bowl = dilate8(np.isin(kind, list(BOWL_KINDS)))
+    kind[(kind == PAD109) & near_bowl] = FLOOR
+
     # biome index for every cell (nearest basin, normalized)
     dist = np.stack([
         ((cc - cx) / rx) ** 2 + ((rr - cz) / rz) ** 2
         for _, (cx, cz), (rx, rz) in BIOMES])
     biome_idx = np.argmin(dist, axis=0).astype(np.uint8)
 
-    return kind, walk, conn_masks, lake_cells, lava_cells, pad_cells, biome_idx
+    return kind, walk, conn_masks, lake_cells, lava_cells, pad_cells, biome_idx, ember_platforms
 
 
 # =========================================================================
@@ -685,7 +809,73 @@ def select_hm(kind, walk, stats, rng):
                 got = pack_hm(best[0], best[1], best[2])
                 cache[key] = got
             hm_grid[r, c] = got
+    # Cliff stamping can mark floor-adjacent cells; never leave kit tiles on flats.
+    for r in range(D):
+        for c in range(W):
+            k = kind[r, c]
+            if k in FLAT_TILE:
+                hm_grid[r, c] = FLAT_TILE[k]
+    repair_walkable_seams(hm_grid, kind, cliff_assigned, stats)
     return hm_grid
+
+
+def repair_walkable_seams(hm_grid, kind, cliff_assigned, stats):
+    """Re-pick bowl ramps that crack against neighboring walkable flats."""
+    flip_combos = ((0, 0), (1, 0), (0, 1), (1, 1))
+
+    def edge_means(v):
+        tid, fx, fy = v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1
+        return stats[(tid, fx, fy)][1]  # N,S,W,E
+
+    walkish = np.isin(kind, list(WALKABLE_KINDS | BOWL_KINDS | {MD_RAMP, MD_PAD}))
+    for _ in range(3):
+        fixed = 0
+        pairs = []
+        for r in range(D):
+            for c in range(W - 1):
+                if walkish[r, c] and walkish[r, c + 1] \
+                        and not cliff_assigned[r, c] and not cliff_assigned[r, c + 1]:
+                    e0 = edge_means(int(hm_grid[r, c]))[3]
+                    e1 = edge_means(int(hm_grid[r, c + 1]))[2]
+                    if abs(e0 - e1) >= 30:
+                        pairs.append(("ew", r, c, e0, e1))
+        for r in range(D - 1):
+            for c in range(W):
+                if walkish[r, c] and walkish[r + 1, c] \
+                        and not cliff_assigned[r, c] and not cliff_assigned[r + 1, c]:
+                    e0 = edge_means(int(hm_grid[r, c]))[1]
+                    e1 = edge_means(int(hm_grid[r + 1, c]))[0]
+                    if abs(e0 - e1) >= 30:
+                        pairs.append(("ns", r, c, e0, e1))
+
+        for orient, r, c, e0, e1 in pairs:
+            if orient == "ew":
+                cells = ((r, c, 3, e1), (r, c + 1, 2, e0))
+            else:
+                cells = ((r, c, 1, e1), (r + 1, c, 0, e0))
+            for rr, cc, want_edge, neigh_h in cells:
+                k = kind[rr, cc]
+                if k not in RAMP_CANDIDATES:
+                    continue
+                best, best_err = int(hm_grid[rr, cc]), 1e18
+                for tid in RAMP_CANDIDATES[k]:
+                    for fx, fy in flip_combos:
+                        edg = stats[(tid, fx, fy)][1]
+                        err = (edg[want_edge] - neigh_h) ** 2
+                        if err < best_err:
+                            best_err = err
+                            best = pack_hm(tid, fx, fy)
+                # If no ramp matches the flat neighbor, collapse soft to shelf flat.
+                if best_err >= 30 * 30 and k in (LK_SOFT, LV_SOFT):
+                    best = FLAT_TILE[LK_SHELF]
+                    best_err = 0
+                    kind[rr, cc] = LK_SHELF if k == LK_SOFT else LV_BED
+                if best != hm_grid[rr, cc]:
+                    hm_grid[rr, cc] = best
+                    fixed += 1
+                break
+        if fixed == 0:
+            break
 
 
 # =========================================================================
@@ -815,17 +1005,19 @@ def nearest_ok(placer, col, row, radius=12):
 
 
 def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
-                lake_cells, lava_cells, pad_cells, stats):
-    # BFS over walkable floor (path==0 is implied by kind; mean<=120)
+                lake_cells, lava_cells, pad_cells, stats, ember_platforms):
+    # BFS over walkable-ish cells (cliffs excluded). Lava is traversable but damaging.
     path9 = np.isin(kind, (CLIFF, CRAMP_L, CRAMP_U))
     open_walk = (~path9) & (mean_map <= 120.0)
-    start_tile = nearest_start = None
 
-    # start position: Ember Flats floor, just south of the big lava field
-    sc, sr = 148, 132
-    # BFS from a seed near start
+    # Start on an Ember jump platform (first reserved island).
+    if ember_platforms:
+        sr, sc = ember_platforms[0]
+    else:
+        bx, bz = BIOMES[EMBER_BIOME][1]
+        sc, sr = bx, bz
     seed = None
-    for rad in range(0, 20):
+    for rad in range(0, 25):
         for r in range(sr - rad, sr + rad + 1):
             for c in range(sc - rad, sc + rad + 1):
                 if 0 <= r < D and 0 <= c < W and open_walk[r, c] \
@@ -836,6 +1028,8 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
                 break
         if seed:
             break
+    if seed is None:
+        raise SystemExit("no walkable start cell")
     bfs = set()
     dq = deque([seed])
     bfs.add(seed)
@@ -863,16 +1057,17 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     scol, srow = seed[1], seed[0]
     egg_anchor = {}
     egg_spots = {}
+    EGG_MIN_DIST = 14          # tiles — eggs within a biome stay fairly far apart
 
     def place_egg_cluster(species, acol, arow, n_floor=5):
         acol, arow = nearest_ok(P, acol, arow)
         egg_anchor[species] = (acol, arow)
         spots = []
         tries = 0
-        while len(spots) < n_floor and tries < 4000:
+        while len(spots) < n_floor and tries < 8000:
             tries += 1
             ang = rng.random() * math.tau
-            rad = rng.uniform(2.5, 6.5)
+            rad = rng.uniform(EGG_MIN_DIST, EGG_MIN_DIST + 8)
             c = int(acol + math.cos(ang) * rad)
             r = int(arow + math.sin(ang) * rad)
             if not (0 <= r < D and 0 <= c < W):
@@ -881,26 +1076,44 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
                 continue
             if not P.cell_free(c, r, "special", 0):
                 continue
-            if any((c - oc) ** 2 + (r - orow) ** 2 < 16 for oc, orow in spots):
+            if any((c - oc) ** 2 + (r - orow) ** 2 < EGG_MIN_DIST ** 2
+                   for oc, orow in spots):
                 continue
             spots.append((c, r))
         if len(spots) < n_floor:
-            raise SystemExit(f"could not cluster eggs for species {species}")
+            # fallback: looser radius but keep min spacing
+            tries = 0
+            while len(spots) < n_floor and tries < 8000:
+                tries += 1
+                if not biome_cells[species if species < 5 else 4]:
+                    break
+                r, c = biome_cells[species if species < 4 else 4][
+                    rng.randrange(len(biome_cells[species if species < 4 else 4]))]
+                c, r = int(c), int(r)
+                if (r, c) not in P.bfs or kind[r, c] not in WALKABLE_KINDS:
+                    continue
+                if not P.cell_free(c, r, "special", 0):
+                    continue
+                if any((c - oc) ** 2 + (r - orow) ** 2 < EGG_MIN_DIST ** 2
+                       for oc, orow in spots + [(acol, arow)]):
+                    continue
+                spots.append((c, r))
+        if len(spots) < n_floor:
+            raise SystemExit(f"could not cluster eggs for species {species} "
+                             f"(got {len(spots)})")
         for c, r in spots:
             P.add(c, r, IT_EGG, (species, 0, 0, 1), "special", protect=True)
         egg_spots[species] = spots
 
-    # species 0..3 on floor in their biomes
-    place_egg_cluster(0, 101, 216)
-    place_egg_cluster(1, 97, 152)
-    place_egg_cluster(2, 135, 128)
-    place_egg_cluster(3, 172, 162)
+    # species 0..3 near each biome center (auto-snapped)
+    for sp, (name, (cx, cz), _) in enumerate(BIOMES[:4]):
+        place_egg_cluster(sp, cx, cz)
     # species 4: 2 on nest pads, 3 on floor
     pads_for_eggs = pad_cells[:2]
     for pr, pc in pads_for_eggs:
         P.add(pc, pr, IT_EGG, (4, 0, 0, 1), "special", protect=True)
-    place_egg_cluster(4, 166, 222, n_floor=3)
-    egg_anchor[4] = (166, 222)
+    nx, nz = BIOMES[4][1]
+    place_egg_cluster(4, nx, nz, n_floor=3)
 
     # start: aim toward Ember's egg cluster (species 2)
     dcol = egg_anchor[2][0] - scol
@@ -908,18 +1121,30 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     aim = round(math.atan2(-dcol, -drow) / (math.tau / 8)) % 8
     P.add(scol, srow, IT_START, (aim, 0, 0, 0), "special", protect=True)
 
-    # portals 0..3 in Shallows, Fern, Ember, Nest, near egg clusters
-    portal_want = [(0, 108, 212), (1, 102, 158), (2, 145, 128), (4, 172, 220)]
-    for pn, (bi, c, r) in enumerate(portal_want):
-        c, r = nearest_ok(P, c, r)
-        d = math.dist((c, r), egg_anchor[bi if bi != 4 else 4])
+    # portals near egg clusters (auto-snap)
+    portal_biomes = [0, 1, 2, 4]
+    for pn, bi in enumerate(portal_biomes):
+        ac, ar = egg_anchor[bi]
+        c, r = nearest_ok(P, ac + 6, ar + 4)
         P.add(c, r, IT_PORTAL, (pn, 0, 0, 0), "special", protect=True)
 
     # ---------------- water / lava / step stones -------------------------
+    # Water only in the deep basin — never on soft fringe or flat floor.
+    DEEP_BASIN = {LK_BED, LK_DEEP}
+
+    def water_item_ok(r, c):
+        """In-game water patch is 8x8 tiles; must sit entirely in bed|deep."""
+        r0, r1 = r - 3, r + 5
+        c0, c1 = c - 3, c + 5
+        if r0 < 0 or c0 < 0 or r1 > D or c1 > W:
+            return False
+        patch = kind[r0:r1, c0:c1]
+        return bool(np.all(np.isin(patch, list(DEEP_BASIN))))
+
     def patch_points(bed):
-        """8-tile grid over the bed's bounding box, snapped to bed cells
-        (an in-game water/lava patch is 8x8 tiles centered on the item)."""
         cells = np.argwhere(bed)
+        if len(cells) == 0:
+            return []
         r0, c0 = cells.min(axis=0)
         r1, c1 = cells.max(axis=0)
         bedset = {(r, c) for r, c in cells}
@@ -933,49 +1158,35 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
 
     for bi, bed in lake_cells:
         for r, c in patch_points(bed):
-            if (c, r) not in P.occupied:
+            if (c, r) not in P.occupied and water_item_ok(r, c):
                 P.add(c, r, IT_WATER, (0, 0, 0, 0), "special")
+            # if 8x8 won't fit, skip — never paint water onto flat surroundings
 
-    big_bed = None
     for bed, fire in lava_cells:
-        if big_bed is None or bed.sum() > big_bed.sum():
-            big_bed = bed
         for r, c in patch_points(bed):
-            if (c, r) not in P.occupied:
+            if (c, r) not in P.occupied and kind[r, c] == LV_BED:
                 P.add(c, r, IT_LAVA, (0, 0, 0, 2 if fire else 0), "special")
 
-    # step stones across the big lava field (type 17)
-    bcells = np.argwhere(big_bed)
-    row_mid = int(bcells[:, 0].mean())
-    cols = sorted({c for r, c in bcells if r == row_mid})
-    stones = 0
-    for c in cols[::2]:
-        if stones >= 12:
-            break
-        if (c, row_mid) not in P.occupied:
-            P.add(c, row_mid, IT_STEPSTONE, (0, 0, 0, 0), "special")
-            stones += 1
-    if stones < 6:     # widen if the center row was crowded
-        for r, c in bcells[::3]:
-            if stones >= 10:
-                break
-            if (c, r) not in P.occupied:
-                P.add(c, r, IT_STEPSTONE, (0, 0, 0, 0), "special")
-                stones += 1
+    # Step-stone items on Ember jump platforms (not packed on lava).
+    for pr, pc in ember_platforms[1:]:  # skip start island
+        if (pc, pr) not in P.occupied and kind[pr, pc] in WALKABLE_KINDS:
+            P.add(pc, pr, IT_STEPSTONE, (0, 0, 0, 0), "special")
 
     # ---------------- powerups -------------------------------------------
     POW_PLAN = [
         (0, [POW_HEALTH] * 3 + [POW_LASER] * 3 + [POW_HEAT] * 2 + [POW_SHIELD] + [POW_TRI]),
         (1, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEALTH] + [POW_HEAT]),
-        (2, [POW_HEALTH] * 2 + [POW_LASER] * 2 + [POW_TRI] + [POW_SONIC] + [POW_NUKE, POW_SHIELD]),
+        # Ember is mostly lava — only a few platform pickups fit.
+        (2, [POW_HEALTH, POW_LASER, POW_SHIELD]),
         (3, [POW_LASER] * 2 + [POW_TRI] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE]),
         (4, [POW_HEALTH] * 2 + [POW_LASER] * 2 + [POW_SONIC] * 2 + [POW_HEAT] + [POW_NUKE]),
     ]
     for bi, kinds_list in POW_PLAN:
         lst = list(kinds_list)
         rng.shuffle(lst)
+        nn = 3.0 if bi == EMBER_BIOME else 6.0
         got = P.scatter(len(lst), biome_cells[bi], IT_POWERUP,
-                        lambda i, l=lst: (l[i], 0, 0, 0), "powerup", 6.0)
+                        lambda i, l=lst: (l[i], 0, 0, 0), "powerup", nn)
         if got < len(lst):
             raise SystemExit(f"powerup placement failed in biome {bi}")
     conn_pows = [POW_HEALTH, POW_HEAT, POW_TRI, POW_SHIELD, POW_NUKE,
@@ -1035,7 +1246,8 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     P.scatter(5, conn_cells[3], IT_ROLLBOULDER, lambda _n: (0, 0, 0, 0), "scenery", 2.0)
 
     # gas vent cluster in Nest Caldera
-    gc, gr = nearest_ok(P, 168, 220)
+    nx, nz = BIOMES[4][1]
+    gc, gr = nearest_ok(P, nx, nz)
     placed = 0
     for dc, dr in ((0, 0), (2, 1), (1, 3), (3, 3), (-1, 2)):
         c, r = gc + dc, gr + dr
@@ -1382,7 +1594,7 @@ def main():
         assert abs(got - want) < 6, f"hm tile {tid}: mean {got} != {want}"
 
     print("building geometry ...")
-    kind, walk, conn_masks, lake_cells, lava_cells, pad_cells, biome_idx = \
+    kind, walk, conn_masks, lake_cells, lava_cells, pad_cells, biome_idx, ember_platforms = \
         build_geometry(rng)
 
     print("selecting heightmap tiles ...")
@@ -1407,7 +1619,7 @@ def main():
     print("placing items ...")
     P, bfs, start, enemy_counts, biome_cells = build_items(
         rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
-        lake_cells, lava_cells, pad_cells, stats)
+        lake_cells, lava_cells, pad_cells, stats, ember_platforms)
 
     items_sorted = sorted(P.items, key=lambda it: (it[0], it[1]))
     normal_items = [it for it in items_sorted if not it[4]]

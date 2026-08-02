@@ -22,6 +22,7 @@ extern int		gWindowHeight;
 #define	MINIMAP_HEIGHT_FRAC		0.22f
 #define	MINIMAP_ALPHA			0.85f
 #define	MINIMAP_MARKER_SIZE		10.0f
+#define	MINIMAP_FIT_PAD_TILES	4			// padding around playable bbox
 
 
 /****************************/
@@ -31,6 +32,10 @@ extern int		gWindowHeight;
 static GLuint	gMinimapTextureName	= 0;
 static Boolean	gMinimapReady		= false;
 static Boolean	gMinimapVisible		= true;			// default on for navigation
+
+// Playable-area zoom window in tile UV space (0..1 over full map texture).
+static float	gMinimapU0 = 0.0f, gMinimapU1 = 1.0f;
+static float	gMinimapV0 = 0.0f, gMinimapV1 = 1.0f;
 
 
 /****************************/
@@ -102,6 +107,48 @@ void InitMinimap(void)
 
 	DisposePtr((Ptr)buf);
 
+			/* ZOOM-TO-FIT: UV window around playable (non-solid) tiles */
+
+	{
+		int		minC = w, maxC = -1, minR = d, maxR = -1;
+		int		pad = MINIMAP_FIT_PAD_TILES;
+
+		if (gTerrainPathLayer != nil)
+		{
+			for (int row = 0; row < d; row++)
+			{
+				for (int col = 0; col < w; col++)
+				{
+					UInt16 p = gTerrainPathLayer[row][col] & TILENUM_MASK;
+					if (p == PATH_TILE_SOLID_ALL || p == PATH_TILE_SOLID_ALL2)
+						continue;
+					if (col < minC) minC = col;
+					if (col > maxC) maxC = col;
+					if (row < minR) minR = row;
+					if (row > maxR) maxR = row;
+				}
+			}
+		}
+
+		if (maxC >= minC && maxR >= minR)
+		{
+			minC = (minC - pad < 0) ? 0 : minC - pad;
+			minR = (minR - pad < 0) ? 0 : minR - pad;
+			maxC = (maxC + pad >= w) ? w - 1 : maxC + pad;
+			maxR = (maxR + pad >= d) ? d - 1 : maxR + pad;
+
+			gMinimapU0 = (float)minC / (float)w;
+			gMinimapU1 = (float)(maxC + 1) / (float)w;
+			gMinimapV0 = (float)minR / (float)d;
+			gMinimapV1 = (float)(maxR + 1) / (float)d;
+		}
+		else
+		{
+			gMinimapU0 = 0.0f; gMinimapU1 = 1.0f;
+			gMinimapV0 = 0.0f; gMinimapV1 = 1.0f;
+		}
+	}
+
 	gMinimapReady = true;
 }
 
@@ -117,6 +164,8 @@ void DisposeMinimap(void)
 	}
 
 	gMinimapReady = false;
+	gMinimapU0 = 0.0f; gMinimapU1 = 1.0f;
+	gMinimapV0 = 0.0f; gMinimapV1 = 1.0f;
 }
 
 
@@ -150,10 +199,17 @@ void DrawMinimap(void)
 	if (gTerrainTileWidth <= 0 || gTerrainTileDepth <= 0)
 		return;
 
-			/* LAYOUT: LOWER-LEFT, NORTH-UP, ASPECT-CORRECT */
+			/* LAYOUT: LOWER-LEFT, NORTH-UP, ASPECT-CORRECT TO PLAYABLE CROP */
 
-	mapH = gWindowHeight * MINIMAP_HEIGHT_FRAC;
-	mapW = mapH * ((float)gTerrainTileWidth / (float)gTerrainTileDepth);
+	{
+		float	uSpan = gMinimapU1 - gMinimapU0;
+		float	vSpan = gMinimapV1 - gMinimapV0;
+		float	aspect = (uSpan * (float)gTerrainTileWidth) /
+						 (vSpan * (float)gTerrainTileDepth);
+
+		mapH = gWindowHeight * MINIMAP_HEIGHT_FRAC;
+		mapW = mapH * aspect;
+	}
 
 	screenLeft		= MINIMAP_MARGIN_PX;
 	screenRight		= screenLeft + mapW;
@@ -174,11 +230,11 @@ void DrawMinimap(void)
 	pts[2] = (TQ3Point2D){ ndcLeft,  ndcTop };
 	pts[3] = (TQ3Point2D){ ndcRight, ndcTop };
 
-	// V=0 (row 0 / north) at TOP of overlay — same convention as fullscreen quads.
-	uvs[0] = (TQ3Param2D){ 0, 1 };
-	uvs[1] = (TQ3Param2D){ 1, 1 };
-	uvs[2] = (TQ3Param2D){ 0, 0 };
-	uvs[3] = (TQ3Param2D){ 1, 0 };
+	// Crop UVs to playable bbox. V=0 (row 0 / north) at TOP of overlay.
+	uvs[0] = (TQ3Param2D){ gMinimapU0, gMinimapV1 };
+	uvs[1] = (TQ3Param2D){ gMinimapU1, gMinimapV1 };
+	uvs[2] = (TQ3Param2D){ gMinimapU0, gMinimapV0 };
+	uvs[3] = (TQ3Param2D){ gMinimapU1, gMinimapV0 };
 
 			/* SAVE GL STATE (renderer state cache lives in Renderer.c) */
 
@@ -230,7 +286,13 @@ void DrawMinimap(void)
 		float	fx, fy;			// facing in map/pixel space (+y = south / down)
 		float	half = MINIMAP_MARKER_SIZE * 0.5f;
 		float	tipLen, baseLen, baseHalf;
+		float	uSpan = gMinimapU1 - gMinimapU0;
+		float	vSpan = gMinimapV1 - gMinimapV0;
 		TQ3Point2D	outline[3], tip[3];
+
+		// Remap full-map UV into the playable crop window.
+		if (uSpan > 0.0001f) u = (u - gMinimapU0) / uSpan;
+		if (vSpan > 0.0001f) v = (v - gMinimapV0) / vSpan;
 
 		if (u < 0) u = 0;
 		if (u > 1) u = 1;

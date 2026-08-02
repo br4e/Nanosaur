@@ -515,8 +515,8 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     open_walk = (~path9) & (mean_map <= 120.0)
     start_tile = nearest_start = None
 
-    # start position: south part of Emerald Shallows
-    sc, sr = 89, 241
+    # start position: Ember Flats floor, just south of the big lava field
+    sc, sr = 148, 108
     # BFS from a seed near start
     seed = None
     for rad in range(0, 20):
@@ -596,9 +596,9 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     place_egg_cluster(4, 176, 243, n_floor=3)
     egg_anchor[4] = (176, 243)
 
-    # start (aim: forward = (-sin(aim*45), -cos(aim*45)) in (x,z))
-    dcol = egg_anchor[0][0] - scol
-    drow = egg_anchor[0][1] - srow
+    # start: aim toward Ember's egg cluster (species 2)
+    dcol = egg_anchor[2][0] - scol
+    drow = egg_anchor[2][1] - srow
     aim = round(math.atan2(-dcol, -drow) / (math.tau / 8)) % 8
     P.add(scol, srow, IT_START, (aim, 0, 0, 0), "special", protect=True)
 

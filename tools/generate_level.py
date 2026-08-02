@@ -85,40 +85,39 @@ WALKABLE_KINDS = {FLOOR, LOW67, PAD109}          # where regular items may go
 BOWL_KINDS = {LK_SOFT, LK_SHELF, LK_DEEP, LK_BED, LV_SOFT, LV_BED}
 
 # ------------------------------------------------------------ biome geometry
-# (name, center(col,row), radii(rx,rz)) — compact arenas (~0.55x prior radii)
+# (name, center(col,row), radii(rx,rz)) — compact arenas, ring pulled inward
 BIOMES = [
-    ("Emerald Shallows", (62, 258), (28, 28)),
-    ("Fern Canyons",     (52, 118), (24, 34)),
-    ("Ember Flats",      (135, 57), (38, 26)),
-    ("Crystal Scar",     (216, 142), (26, 32)),
-    ("Nest Caldera",     (204, 272), (30, 28)),
+    ("Emerald Shallows", (87, 231), (28, 28)),
+    ("Fern Canyons",     (81, 140), (24, 34)),
+    ("Ember Flats",      (135, 100), (38, 26)),
+    ("Crystal Scar",     (188, 155), (26, 32)),
+    ("Nest Caldera",     (180, 240), (30, 28)),
 ]
-MESA = ((135, 180), (48, 58))
-# connectors: polyline points (col,row); pocket positions t in 0..1
-# endpoints reach into the smaller basins so the ring stays connected
+MESA = ((135, 180), (32, 38))
+# short connector bridges between nearby basin edges
 CONNECTORS = [
-    ("Shallows->Fern",  [(60, 238), (48, 175), (50, 140)], (0.35, 0.72)),
-    ("Fern->Ember",     [(60, 95), (85, 72), (115, 60)],   (0.4,)),
-    ("Ember->Crystal",  [(165, 60), (200, 85), (210, 120)], (0.3, 0.7)),
-    ("Crystal->Nest",   [(220, 165), (228, 210), (215, 250)], (0.5,)),
-    ("Nest->Shallows",  [(180, 285), (135, 290), (85, 275)], (0.3, 0.7)),
+    ("Shallows->Fern",  [(85, 210), (82, 190), (80, 165)], (0.4, 0.7)),
+    ("Fern->Ember",     [(95, 125), (110, 110), (120, 100)], (0.45,)),
+    ("Ember->Crystal",  [(155, 95), (165, 115), (175, 135)], (0.35, 0.7)),
+    ("Crystal->Nest",   [(190, 175), (188, 195), (182, 215)], (0.5,)),
+    ("Nest->Shallows",  [(165, 245), (135, 245), (110, 235)], (0.35, 0.7)),
 ]
-FERN_BLOBS = [(40, 100, 5), (62, 115, 5), (44, 135, 6), (60, 145, 4)]
+FERN_BLOBS = [(69, 122, 5), (91, 137, 5), (73, 157, 6), (89, 167, 4)]
 
 # lakes: (biome_idx, col, row, rx, rz) — pulled toward biome centers
 LAKES = [
-    (0, 50, 248, 3, 2), (0, 72, 262, 3, 2), (0, 58, 272, 2, 2),
-    (3, 208, 130, 2, 2), (3, 224, 152, 2, 2),
-    (4, 200, 268, 4, 3),
+    (0, 75, 221, 3, 2), (0, 97, 235, 3, 2), (0, 83, 245, 2, 2),
+    (3, 180, 143, 2, 2), (3, 196, 165, 2, 2),
+    (4, 176, 236, 4, 3),
 ]
 # lava pools in Ember: (col,row,rx,rz, fireballs)
 LAVA_POOLS = [
-    (135, 50, 6, 4, True),      # the big field (gets step stones)
-    (120, 48, 2, 2, True), (148, 48, 2, 2, True), (125, 65, 2, 2, True),
-    (145, 68, 2, 2, True), (112, 58, 2, 2, False), (155, 55, 2, 2, True),
+    (135, 93, 6, 4, True),      # the big field (gets step stones)
+    (120, 91, 2, 2, True), (148, 91, 2, 2, True), (125, 108, 2, 2, True),
+    (145, 111, 2, 2, True), (112, 101, 2, 2, False), (155, 98, 2, 2, True),
 ]
 # nest pad complexes: top-left cell of the 2x2 pad (ring adds 1 cell around)
-NEST_PADS = [(188, 280), (198, 288), (214, 282), (220, 268), (212, 258)]
+NEST_PADS = [(164, 248), (174, 256), (190, 250), (196, 236), (188, 226)]
 
 # ------------------------------------------------------------ texture weaves
 SOUTH_GRASS = [189, 190, 200, 201]
@@ -517,7 +516,7 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     start_tile = nearest_start = None
 
     # start position: south part of Emerald Shallows
-    sc, sr = 64, 268
+    sc, sr = 89, 241
     # BFS from a seed near start
     seed = None
     for rad in range(0, 20):
@@ -586,16 +585,16 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
         egg_spots[species] = spots
 
     # species 0..3 on floor in their biomes
-    place_egg_cluster(0, 55, 250)
-    place_egg_cluster(1, 48, 115)
-    place_egg_cluster(2, 135, 60)
-    place_egg_cluster(3, 216, 142)
+    place_egg_cluster(0, 80, 223)
+    place_egg_cluster(1, 77, 137)
+    place_egg_cluster(2, 135, 103)
+    place_egg_cluster(3, 188, 155)
     # species 4: 2 on nest pads, 3 on floor
     pads_for_eggs = pad_cells[:2]
     for pr, pc in pads_for_eggs:
         P.add(pc, pr, IT_EGG, (4, 0, 0, 1), "special", protect=True)
-    place_egg_cluster(4, 200, 275, n_floor=3)
-    egg_anchor[4] = (200, 275)
+    place_egg_cluster(4, 176, 243, n_floor=3)
+    egg_anchor[4] = (176, 243)
 
     # start (aim: forward = (-sin(aim*45), -cos(aim*45)) in (x,z))
     dcol = egg_anchor[0][0] - scol
@@ -604,7 +603,7 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     P.add(scol, srow, IT_START, (aim, 0, 0, 0), "special", protect=True)
 
     # portals 0..3 in Shallows, Fern, Ember, Nest, near egg clusters
-    portal_want = [(0, 72, 248), (1, 58, 130), (2, 150, 55), (4, 215, 275)]
+    portal_want = [(0, 97, 221), (1, 87, 152), (2, 150, 98), (4, 191, 243)]
     for pn, (bi, c, r) in enumerate(portal_want):
         c, r = nearest_ok(P, c, r)
         d = math.dist((c, r), egg_anchor[bi if bi != 4 else 4])
@@ -730,7 +729,7 @@ def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
     P.scatter(5, conn_cells[3], IT_ROLLBOULDER, lambda _n: (0, 0, 0, 0), "scenery", 2.0)
 
     # gas vent cluster in Nest Caldera
-    gc, gr = nearest_ok(P, 208, 270)
+    gc, gr = nearest_ok(P, 184, 238)
     placed = 0
     for dc, dr in ((0, 0), (2, 1), (1, 3), (3, 3), (-1, 2)):
         c, r = gc + dc, gr + dr

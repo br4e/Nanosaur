@@ -32,13 +32,13 @@ static void MoveDinoSpit(ObjNode *theNode);
 #define	SPITTER_MIN_ATTACK_RANGE	300.0f
 
 #define SPITTER_TURN_SPEED		3.5f
-#define SPITTER_WALK_SPEED		380.0f
+#define SPITTER_WALK_SPEED		400.0f
 
 #define	SPITTER_TARGET_SCALE	200.0f
 
 
-#define	SPITTER_HEALTH		0.8f	
-#define	SPITTER_DAMAGE		0.01f
+#define	SPITTER_HEALTH		1.0f
+#define	SPITTER_DAMAGE		0.02f
 
 #define	SPITTER_SCALE		.8f
 
@@ -75,34 +75,34 @@ ObjNode	*newObj;
 	if (gNumEnemies >= MAX_ENEMIES)				// keep from getting absurd
 		return(false);
 
-	if (!(itemPtr->parm[3] & 1))				// see if always add 
+	if (!(itemPtr->parm[3] & 1))				// see if always add
 	{
 		if (gNumEnemyOfKind[ENEMY_KIND_SPITTER] >= MAX_SPITTER)
 			return(false);
 	}
 
 				/* MAKE DEFAULT SKELETON ENEMY */
-				
+
 	newObj = MakeEnemySkeleton(SKELETON_TYPE_SPITTER,x,z);
 	if (newObj == nil)
 		return(false);
 	newObj->TerrainItemPtr = itemPtr;
 
 	SetSkeletonAnim(newObj->Skeleton, SPITTER_ANIM_WALK);
-	
+
 
 				/* SET BETTER INFO */
-			
-	newObj->Coord.y -= FOOT_OFFSET;			
+
+	newObj->Coord.y -= FOOT_OFFSET;
 	newObj->MoveCall = MoveSpitter;							// set move call
 	newObj->Health = SPITTER_HEALTH;
 	newObj->Damage = SPITTER_DAMAGE;
 	newObj->Kind = ENEMY_KIND_SPITTER;
 	newObj->Scale.x = newObj->Scale.y = newObj->Scale.z = SPITTER_SCALE;	// set scale
 	newObj->Radius *= SPITTER_SCALE;
-	
+
 				/* SET COLLISION INFO */
-				
+
 	SetObjectCollisionBounds(newObj, 80,FOOT_OFFSET,-90,90,90,-90);
 
 
@@ -112,7 +112,7 @@ ObjNode	*newObj;
 
 
 				/* MAKE SHADOW */
-				
+
 	AttachShadowToObject(newObj, 1.6, 1.6*2.5);
 
 	gNumEnemies++;
@@ -152,13 +152,13 @@ float	d;
 
 
 				/* SEE IF IN WALK RANGE */
-				
+
 	d = CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
 	if ((d < SPITTER_MAX_ATTACK_RANGE) && (d > SPITTER_MIN_ATTACK_RANGE))
 		MorphToSkeletonAnim(theNode->Skeleton, SPITTER_ANIM_WALK,7);
 
 					/* SEE IF SHOULD SPIT */
-					
+
 	else
 	{
 		theNode->SpitTimer -= gFramesPerSecondFrac;							// dec timer
@@ -171,19 +171,19 @@ float	d;
 	}
 
 			/* IF CLOSE, KEEP AIMED AT ME */
-			
+
 	if (d < (SPITTER_MIN_ATTACK_RANGE * 2.0f))
 	{
-		TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, SPITTER_TURN_SPEED/3, false);			
+		TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, SPITTER_TURN_SPEED/3, false);
 	}
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
-	UpdateEnemy(theNode);		
-	
+	UpdateEnemy(theNode);
+
 }
 
 
@@ -194,11 +194,11 @@ static void  MoveSpitter_Walking(ObjNode *theNode)
 float	r,speed,dist;
 
 			/* MOVE TOWARD PLAYER */
-			
-	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, SPITTER_TURN_SPEED, true);			
+
+	TurnObjectTowardTarget(theNode, gMyCoord.x, gMyCoord.z, SPITTER_TURN_SPEED, true);
 
 	r = theNode->Rot.y;
-	speed = theNode->Speed = SPITTER_WALK_SPEED;	
+	speed = theNode->Speed = SPITTER_WALK_SPEED;
 	gDelta.x = -sin(r) * speed;
 	gDelta.z = -cos(r) * speed;
 	gDelta.y -= GRAVITY_CONSTANT*gFramesPerSecondFrac;				// add gravity
@@ -207,7 +207,7 @@ float	r,speed,dist;
 
 
 			/* SEE IF OUT OF WALK-RANGE */
-			
+
 	dist = CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
 	if (dist > (SPITTER_MAX_ATTACK_RANGE*1.3f))
 	{
@@ -237,18 +237,18 @@ float	r,speed,dist;
 		CalcNewTargetOffsets(theNode,SPITTER_TARGET_SCALE);
 		theNode->TargetChangeTimer	= 0;
 	}
-	
+
 		/* UPDATE ANIM SPEED */
 
 	theNode->Skeleton->AnimSpeed = speed * .008f;
-	
+
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
-	
-	UpdateEnemy(theNode);		
+
+	UpdateEnemy(theNode);
 }
 
 /********************** MOVE SPITTER: SPITTING ******************************/
@@ -257,21 +257,21 @@ static void  MoveSpitter_Spitting(ObjNode *theNode)
 {
 
 			/* SEE IF CAN SHOOT SPIT NOW */
-			
+
 	if (theNode->ShootSpitFlag)
 	{
 		ShootSpit(theNode);
-	
+
 	}
-	
+
 			/* SEE IF DONE WITH ANIM */
-			
+
 	if (theNode->Skeleton->AnimHasStopped)
-	{	
+	{
 		float	d;
 
 			/* FIGURE OUT WHICH ANIM TO GO TO */
-			
+
 		d = CalcQuickDistance(gCoord.x+theNode->TargetOff.x, gCoord.z+theNode->TargetOff.y, gMyCoord.x, gMyCoord.z);
 		if ((d < SPITTER_MAX_ATTACK_RANGE) && (d > SPITTER_MIN_ATTACK_RANGE))
 			MorphToSkeletonAnim(theNode->Skeleton, SPITTER_ANIM_WALK,7);
@@ -283,12 +283,12 @@ static void  MoveSpitter_Spitting(ObjNode *theNode)
 	}
 
 				/* DO ENEMY COLLISION */
-				
+
 	if (DoEnemyCollisionDetect(theNode,DEFAULT_ENEMY_COLLISION_CTYPES))
 		return;
 
-	UpdateEnemy(theNode);		
-	
+	UpdateEnemy(theNode);
+
 }
 
 
@@ -303,29 +303,29 @@ TQ3Vector3D			vector;
 ObjNode				*newObj;
 
 			/* SEE IF TIME TO SPIT */
-			
+
 	theNode->SpitRegulator += gFramesPerSecondFrac;
 	if (theNode->SpitRegulator < .08f)
 		return;
-		
-	theNode->SpitRegulator = 0;	
-	
+
+	theNode->SpitRegulator = 0;
+
 
 			/* CALCULATE COORD OF MOUTH */
-			
+
 	FindJointFullMatrix(theNode, 2, &matrix);
 	Q3Point3D_Transform(&originOff, &matrix, &gNewObjectDefinition.coord);
 
 
 		/* CALC DIRECTIONAL VECTOR FOR SPEW */
-			
+
 	Q3Vector3D_Transform(&inVector, &matrix, &vector);
 
 
 				/* MAKE SPIT WAD */
 
-	gNewObjectDefinition.group = GLOBAL_MGroupNum_DinoSpit;	
-	gNewObjectDefinition.type = GLOBAL_MObjType_DinoSpit;	
+	gNewObjectDefinition.group = GLOBAL_MGroupNum_DinoSpit;
+	gNewObjectDefinition.type = GLOBAL_MObjType_DinoSpit;
 	gNewObjectDefinition.flags = 0;
 	gNewObjectDefinition.slot = 100;
 	gNewObjectDefinition.moveCall = MoveDinoSpit;
@@ -341,8 +341,8 @@ ObjNode				*newObj;
 		newObj->CType = CTYPE_HURTME;
 		newObj->CBits = CBITS_TOUCHABLE;
 		newObj->Damage = .1;
-		
-		
+
+
 		SetObjectCollisionBounds(newObj,20,-20,-20,20,20,-20);
 	}
 }
@@ -358,11 +358,11 @@ float	y,fps;
 
 			/* APPLY GRAVITY */
 
-	fps = gFramesPerSecondFrac;	
+	fps = gFramesPerSecondFrac;
 	gDelta.y -= fps * (GRAVITY_CONSTANT/6);
 
 			/* MOVE IT */
-			
+
 	gCoord.x += gDelta.x * fps;
 	gCoord.y += gDelta.y * fps;
 	gCoord.z += gDelta.z * fps;
@@ -372,7 +372,7 @@ float	y,fps;
 	y = GetTerrainHeightAtCoord_Quick(gCoord.x,gCoord.z);
 	if (gCoord.y <= y)
 	{
-del:	
+del:
 		DeleteObject(theNode);
 		return;
 	}
@@ -385,10 +385,3 @@ del:
 
 	UpdateObject(theNode);
 }
-
-
-
-
-
-
-

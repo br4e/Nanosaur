@@ -63,7 +63,7 @@ N_KINDS = 14
 
 # (lo, hi) plateau range each kind spans (heightmap pixel values, worldY = px*4)
 KIND_RANGE = {
-    CLIFF: (255, 255), CRAMP_L: (85, 152), CRAMP_U: (152, 255),
+    CLIFF: (255, 255), CRAMP_L: (85, 149), CRAMP_U: (151, 254),
     FLOOR: (85, 85), LOW67: (67, 67), PAD109: (109, 109),
     LK_SOFT: (67, 85), LK_SHELF: (67, 67), LK_DEEP: (41, 67), LK_BED: (41, 41),
     LV_SOFT: (67, 85), LV_BED: (67, 67),
@@ -71,15 +71,38 @@ KIND_RANGE = {
 }
 FLAT_TILE = {CLIFF: 0, FLOOR: 6, LOW67: 7, PAD109: 5,
              LK_SHELF: 7, LK_BED: 8, LV_BED: 7, MD_PAD: 31}
+# Lake/lava/mesa ramps use SSE; cliff walls use the original fixed kit (below).
 RAMP_CANDIDATES = {
-    CRAMP_L: (235, 217, 167, 166, 182, 181, 180),
-    CRAMP_U: (235, 217, 167, 166, 182, 181, 180),
     LK_SOFT: (22, 37, 48, 38, 23),
     LV_SOFT: (22, 37, 48, 38, 23),
     LK_DEEP: (24, 40, 39, 51, 35),
     MD_RAMP: (1, 32, 2, 17),
 }
-KIT_HM_IDS = sorted({t for v in RAMP_CANDIDATES.values() for t in v} | set(FLAT_TILE.values()))
+# Original Level1 cliff kit: 2-tile orth stacks + 3-tile diagonal stamps.
+# Facing = direction toward the low/walkable side.
+CLIFF_ORTH = {  # facing -> (lower_tid, upper_tid, fx, fy)
+    "E": (167, 166, 0, 0),
+    "W": (167, 166, 1, 0),
+    "S": (235, 217, 0, 0),
+    "N": (235, 217, 0, 1),
+}
+# Diagonal high-tip -> flip; 180 stamps toward cliff, 182 toward floor.
+CLIFF_DIAG = {"SW": (0, 0), "SE": (1, 0), "NW": (0, 1), "NE": (1, 1)}
+CLIFF_TEX = {  # (tid, fx, fy) -> full texture value from original Level1
+    (167, 0, 0): 20561, (167, 0, 1): 20560, (167, 1, 0): 4176, (167, 1, 1): 4177,
+    (166, 0, 0): 20545, (166, 0, 1): 20544, (166, 1, 0): 4160, (166, 1, 1): 4161,
+    (235, 0, 0): 80, (235, 0, 1): 16464, (235, 1, 0): 32848, (235, 1, 1): 49232,
+    (217, 0, 0): 64, (217, 0, 1): 16448, (217, 1, 0): 32832, (217, 1, 1): 49216,
+    (181, 0, 0): 16506, (181, 0, 1): 66, (181, 1, 0): 49218, (181, 1, 1): 32890,
+    (180, 0, 0): 16496, (180, 0, 1): 50, (180, 1, 0): 49264, (180, 1, 1): 32880,
+    (182, 0, 0): 16516, (182, 0, 1): 132, (182, 1, 0): 49355, (182, 1, 1): 32971,
+}
+CLIFF_PATH43 = {167, 235, 182}
+KIT_HM_IDS = sorted(
+    {t for v in RAMP_CANDIDATES.values() for t in v}
+    | set(FLAT_TILE.values())
+    | {166, 167, 180, 181, 182, 217, 235}
+)
 
 WALKABLE_KINDS = {FLOOR, LOW67, PAD109}          # where regular items may go
 BOWL_KINDS = {LK_SOFT, LK_SHELF, LK_DEEP, LK_BED, LV_SOFT, LV_BED}
@@ -355,16 +378,293 @@ def corner_targets(kind):
     return raw, lo, hi          # raw is (D+1, W+1)
 
 
-def select_hm(kind, stats, rng):
+def pack_hm(tid, fx, fy):
+    return tid | (fx << 15) | (fy << 14)
+
+
+def stamp_cliff_kit(kind, walk):
+    """Stamp original Level1 cliff grammar: orth 2-tile stacks + diagonal stamps.
+
+    Facing = direction toward walkable (low). Lower band uses 167/235 with
+    path 43; upper uses matching-flip 166/217 with path 9. Corners use
+    182/181/180 with matched flips. Diagonals are stamped before orth stacks
+    so 167 never sits adjacent to 235 (matches original Level1).
+    """
+    hm = np.zeros((D, W), np.uint16)
+    assigned = np.zeros((D, W), bool)
+    CARD = (("N", -1, 0), ("S", 1, 0), ("W", 0, -1), ("E", 0, 1))
+    OPP = {"N": "S", "S": "N", "W": "E", "E": "W"}
+    STEP = {n: (dr, dc) for n, dr, dc in CARD}
+    LOW_TO_TIP = {
+        frozenset(("N", "E")): "SW",
+        frozenset(("N", "W")): "SE",
+        frozenset(("S", "E")): "NW",
+        frozenset(("S", "W")): "NE",
+    }
+    TIP_CLIFF = {
+        "SW": ("W", "S"), "SE": ("E", "S"), "NW": ("N", "W"), "NE": ("N", "E"),
+    }
+    TIP_FLOOR = {
+        "SW": ("N", "E"), "SE": ("N", "W"), "NW": ("S", "E"), "NE": ("S", "W"),
+    }
+
+    def inb(r, c):
+        return 0 <= r < D and 0 <= c < W
+
+    def lows_at(r, c):
+        out = []
+        for name, dr, dc in CARD:
+            nr, nc = r + dr, c + dc
+            if inb(nr, nc) and walk[nr, nc]:
+                out.append(name)
+        return out
+
+    # Classify every lower-band cell before writing any tiles.
+    classes = {}  # (r,c) -> ("diag", tip) | ("orth", facing)
+    for r, c in zip(*np.nonzero(kind == CRAMP_L)):
+        lows = lows_at(r, c)
+        key = frozenset(lows)
+        if len(lows) == 2 and key in LOW_TO_TIP:
+            classes[(r, c)] = ("diag", LOW_TO_TIP[key])
+        elif len(lows) >= 1:
+            # Prefer the low side whose opposite neighbor is the upper/cliff band
+            facing = lows[0]
+            for f in lows:
+                odr, odc = STEP[OPP[f]]
+                nr, nc = r + odr, c + odc
+                if inb(nr, nc) and kind[nr, nc] in (CRAMP_U, CLIFF):
+                    facing = f
+                    break
+            classes[(r, c)] = ("orth", facing)
+        else:
+            # No cardinal floor (outer tip / degenerate): face nearest walkable.
+            facing = "S"
+            best = 1e18
+            for name, dr, dc in CARD:
+                for dist in range(1, 6):
+                    nr, nc = r + dr * dist, c + dc * dist
+                    if inb(nr, nc) and walk[nr, nc]:
+                        if dist < best:
+                            best, facing = dist, name
+                        break
+            classes[(r, c)] = ("orth", facing)
+
+    # Also promote orth cells that sit at a concave floor corner via 8-neighbors:
+    # if two adjacent orth facings would meet as 167|235, upgrade to diagonal.
+    for (r, c), (typ, facing) in list(classes.items()):
+        if typ != "orth":
+            continue
+        lows = set(lows_at(r, c))
+        # Re-check with diagonal walkable corners: floor SE of cell etc.
+        for tip, (fx, fy) in CLIFF_DIAG.items():
+            floor_dirs = TIP_FLOOR[tip]
+            if all(
+                any(
+                    inb(r + STEP[d][0] * k, c + STEP[d][1] * k)
+                    and walk[r + STEP[d][0] * k, c + STEP[d][1] * k]
+                    for k in (1,)
+                )
+                for d in floor_dirs
+            ) and not any(
+                inb(r + STEP[d][0], c + STEP[d][1]) and walk[r + STEP[d][0], c + STEP[d][1]]
+                for d in TIP_CLIFF[tip]
+            ):
+                # both floor-side cardinals are walkable and cliff-sides are not
+                if set(floor_dirs).issubset(lows) or len(lows) == 0:
+                    classes[(r, c)] = ("diag", tip)
+                    break
+
+    # Pass 1: diagonal stamps (181 / 180 / 182)
+    for (r, c), (typ, tip) in classes.items():
+        if typ != "diag":
+            continue
+        fx, fy = CLIFF_DIAG[tip]
+        hm[r, c] = pack_hm(181, fx, fy)
+        assigned[r, c] = True
+        # Outer diagonal (both cliff dirs) is where original places 180.
+        cliff_dirs = TIP_CLIFF[tip]
+        dr = STEP[cliff_dirs[0]][0] + STEP[cliff_dirs[1]][0]
+        dc = STEP[cliff_dirs[0]][1] + STEP[cliff_dirs[1]][1]
+        ur, uc = r + dr, c + dc
+        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF) and not assigned[ur, uc]:
+            hm[ur, uc] = pack_hm(180, fx, fy)
+            assigned[ur, uc] = True
+        for name in cliff_dirs:
+            adr, adc = STEP[name]
+            for dist in (1, 2):
+                ur, uc = r + adr * dist, c + adc * dist
+                if not inb(ur, uc) or assigned[ur, uc]:
+                    continue
+                if kind[ur, uc] in (CRAMP_U, CLIFF):
+                    hm[ur, uc] = pack_hm(180, fx, fy)
+                    assigned[ur, uc] = True
+                    break
+        for name in TIP_FLOOR[tip]:
+            adr, adc = STEP[name]
+            fr, fc = r + adr, c + adc
+            if not inb(fr, fc) or assigned[fr, fc]:
+                continue
+            if kind[fr, fc] in (CRAMP_L, FLOOR, LOW67, PAD109):
+                hm[fr, fc] = pack_hm(182, fx, fy)
+                assigned[fr, fc] = True
+
+    # Pass 2: orth stacks on remaining lower-band cells
+    for (r, c), (typ, facing) in classes.items():
+        if assigned[r, c] or typ != "orth":
+            continue
+        if facing not in CLIFF_ORTH:
+            facing = "S"
+        lo_tid, up_tid, fx, fy = CLIFF_ORTH[facing]
+        hm[r, c] = pack_hm(lo_tid, fx, fy)
+        assigned[r, c] = True
+        odr, odc = STEP[OPP[facing]]
+        ur, uc = r + odr, c + odc
+        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF) and not assigned[ur, uc]:
+            hm[ur, uc] = pack_hm(up_tid, fx, fy)
+            assigned[ur, uc] = True
+
+    # Pass 3: any leftover CRAMP_L (should be rare)
+    for r, c in zip(*np.nonzero((kind == CRAMP_L) & ~assigned)):
+        lows = lows_at(r, c)
+        facing = lows[0] if lows else "S"
+        lo_tid, up_tid, fx, fy = CLIFF_ORTH.get(facing, CLIFF_ORTH["S"])
+        hm[r, c] = pack_hm(lo_tid, fx, fy)
+        assigned[r, c] = True
+        odr, odc = STEP[OPP[facing]]
+        ur, uc = r + odr, c + odc
+        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF) and not assigned[ur, uc]:
+            hm[ur, uc] = pack_hm(up_tid, fx, fy)
+            assigned[ur, uc] = True
+
+    # Pass 4: remaining CRAMP_U — upper tile facing walkable / lower band
+    for r, c in zip(*np.nonzero((kind == CRAMP_U) & ~assigned)):
+        facing = None
+        for name, dr, dc in CARD:
+            nr, nc = r + dr, c + dc
+            if inb(nr, nc) and (walk[nr, nc] or kind[nr, nc] == CRAMP_L):
+                facing = name
+                break
+        if facing is None:
+            facing = "S"
+        _, up_tid, fx, fy = CLIFF_ORTH[facing]
+        hm[r, c] = pack_hm(up_tid, fx, fy)
+        assigned[r, c] = True
+
+    hm[kind == CLIFF] = 0
+    assigned[kind == CLIFF] = True
+
+    # Repair lower orth tiles whose low edge does not face walkable floor.
+    for r, c in zip(*np.nonzero(kind == CRAMP_L)):
+        tid = int(hm[r, c]) & 0x0FFF
+        if tid not in (167, 235):
+            continue
+        lows = lows_at(r, c)
+        if not lows:
+            continue
+        # Prefer unique floor side; else the side opposite upper/cliff band.
+        if len(lows) == 1:
+            facing = lows[0]
+        else:
+            facing = lows[0]
+            for f in lows:
+                odr, odc = STEP[OPP[f]]
+                nr, nc = r + odr, c + odc
+                if inb(nr, nc) and kind[nr, nc] in (CRAMP_U, CLIFF):
+                    facing = f
+                    break
+                # Also accept an already-stamped upper kit tile as the cliff side.
+                if inb(nr, nc) and (int(hm[nr, nc]) & 0x0FFF) in (166, 217, 180, 0):
+                    facing = f
+                    break
+        lo_tid, up_tid, fx, fy = CLIFF_ORTH[facing]
+        hm[r, c] = pack_hm(lo_tid, fx, fy)
+        odr, odc = STEP[OPP[facing]]
+        ur, uc = r + odr, c + odc
+        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF):
+            ut = int(hm[ur, uc]) & 0x0FFF
+            if ut in (166, 217, 0, 180):
+                hm[ur, uc] = pack_hm(up_tid, fx, fy)
+
+    # Collapse illegal double-thick lower orth stacks into lower+upper pairs.
+    ids = hm & 0x0FFF
+    for r in range(D - 1):
+        for c in range(W):
+            a, b = int(ids[r, c]), int(ids[r + 1, c])
+            if a != b or a not in (167, 235):
+                continue
+            if kind[r, c] != CRAMP_L or kind[r + 1, c] != CRAMP_L:
+                continue
+            # Northern cell becomes the matching upper tile.
+            fx = (int(hm[r + 1, c]) >> 15) & 1
+            fy = (int(hm[r + 1, c]) >> 14) & 1
+            up = 217 if a == 235 else 166
+            hm[r, c] = pack_hm(up, fx, fy)
+    for r in range(D):
+        for c in range(W - 1):
+            a, b = int(ids[r, c]), int(ids[r, c + 1])
+            if a != b or a not in (167, 235):
+                continue
+            if kind[r, c] != CRAMP_L or kind[r, c + 1] != CRAMP_L:
+                continue
+            fx = (int(hm[r, c]) >> 15) & 1
+            fy = (int(hm[r, c]) >> 14) & 1
+            # If both face E (fx=0), the western cell is toward cliff → make it upper.
+            # If both face W (fx=1), the eastern cell is toward cliff → make it upper.
+            up = 166
+            if fx == 0:
+                hm[r, c] = pack_hm(up, fx, fy)
+            else:
+                hm[r, c + 1] = pack_hm(up, fx, fy)
+            ids = hm & 0x0FFF
+
+    # Final cleanup: any remaining 167|235 adjacency → convert to 181.
+    for _ in range(2):
+        ids = hm & 0x0FFF
+        for r in range(D):
+            for c in range(W - 1):
+                a, b = int(ids[r, c]), int(ids[r, c + 1])
+                if {a, b} != {167, 235}:
+                    continue
+                for cc in (c, c + 1):
+                    if kind[r, cc] != CRAMP_L:
+                        continue
+                    lows = frozenset(lows_at(r, cc))
+                    tip = LOW_TO_TIP.get(lows, "SW")
+                    fx, fy = CLIFF_DIAG[tip]
+                    hm[r, cc] = pack_hm(181, fx, fy)
+                    break
+        for r in range(D - 1):
+            for c in range(W):
+                a, b = int(ids[r, c]), int(ids[r + 1, c])
+                if {a, b} != {167, 235}:
+                    continue
+                for rr in (r, r + 1):
+                    if kind[rr, c] != CRAMP_L:
+                        continue
+                    lows = frozenset(lows_at(rr, c))
+                    tip = LOW_TO_TIP.get(lows, "SW")
+                    fx, fy = CLIFF_DIAG[tip]
+                    hm[rr, c] = pack_hm(181, fx, fy)
+                    break
+
+    return hm, assigned
+
+
+def select_hm(kind, walk, stats, rng):
+    hm_grid, cliff_assigned = stamp_cliff_kit(kind, walk)
     raw, lo, hi = corner_targets(kind)
-    hm_grid = np.zeros((D, W), np.uint16)   # full16 with ORIGINAL tile ids
     cache = {}
     flip_combos = ((0, 0), (1, 0), (0, 1), (1, 1))
     for r in range(D):
         for c in range(W):
+            if cliff_assigned[r, c]:
+                continue
             k = kind[r, c]
             if k in FLAT_TILE:
                 hm_grid[r, c] = FLAT_TILE[k]
+                continue
+            if k not in RAMP_CANDIDATES:
+                # Should not happen for cliff bands (already stamped); leave 0.
                 continue
             l, h = KIND_RANGE[k]
             tgt = tuple(int(min(max(raw[rr, cx], l), h))
@@ -382,7 +682,7 @@ def select_hm(kind, stats, rng):
                         err += 0.6 * sum((a - b) ** 2 for a, b in zip(edg, te))
                         if err < best_err:
                             best_err, best = err, (tid, fx, fy)
-                got = best[0] | (best[1] << 15) | (best[2] << 14)
+                got = pack_hm(best[0], best[1], best[2])
                 cache[key] = got
             hm_grid[r, c] = got
     return hm_grid
@@ -402,6 +702,15 @@ def paint_textures(kind, hm_grid, biome_idx, hm2tex, rng):
         for c in range(W):
             k = kind[r, c]
             b = biome_idx[r, c]
+            v = int(hm_grid[r, c])
+            key = (v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1)
+            # Original cliff-kit textures always win when a kit hm tile is present
+            if key in CLIFF_TEX:
+                tex[r, c] = CLIFF_TEX[key]
+                continue
+            if key[0] in (166, 167, 180, 181, 182, 217, 235):
+                tex[r, c] = hm2tex.get(key, weave(WALL_FALLBACK))
+                continue
             if k in (FLOOR, LOW67, PAD109):
                 if b == 0:
                     tex[r, c] = weave(SOUTH_GRASS)
@@ -415,9 +724,7 @@ def paint_textures(kind, hm_grid, biome_idx, hm2tex, rng):
                     tex[r, c] = weave(NEST_WATERSIDE) if near_lake[r, c] else weave(SOUTH_GRASS)
             elif k == CLIFF:
                 tex[r, c] = weave(EMBER_MESA) if b == 2 else weave(SOUTH_GRASS)
-            elif k in (CRAMP_L, CRAMP_U, MD_RAMP, MD_PAD):
-                v = int(hm_grid[r, c])
-                key = (v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1)
+            elif k in (MD_RAMP, MD_PAD):
                 tex[r, c] = hm2tex.get(key, weave(WALL_FALLBACK))
             elif k == LK_BED:
                 tex[r, c] = weave(NEST_WATERSIDE if b == 4 else WATER_BED)
@@ -1034,10 +1341,12 @@ def validate_ter(path, orig, label):
     checks.append(("6 spacing", not dup and nn_e >= 1.0 and nn_p >= 5.0,
                    f"dup_tiles={len(dup)} enemyNN={nn_e:.2f} powerupNN={nn_p:.2f}"))
 
-    # 7 heightmap continuity
-    p9 = (pathl == 9)
-    bad_ew = (np.abs(gE[:, :-1] - gW[:, 1:]) >= 30) & ~p9[:, :-1] & ~p9[:, 1:]
-    bad_ns = (np.abs(gS[:-1, :] - gN[1:, :]) >= 30) & ~p9[:-1, :] & ~p9[1:, :]
+    # 7 heightmap continuity — only require seamless edges on walkable path-0
+    # cells. Cliff/slope bands (path 9 / 43) use the original kit and may have
+    # intentional grade changes against floor.
+    walkable = (pathl == 0)
+    bad_ew = (np.abs(gE[:, :-1] - gW[:, 1:]) >= 30) & walkable[:, :-1] & walkable[:, 1:]
+    bad_ns = (np.abs(gS[:-1, :] - gN[1:, :]) >= 30) & walkable[:-1, :] & walkable[1:, :]
     n_bad = int(bad_ew.sum() + bad_ns.sum())
     checks.append(("7 continuity", n_bad == 0, f"cracked pairs={n_bad}"))
 
@@ -1077,12 +1386,20 @@ def main():
         build_geometry(rng)
 
     print("selecting heightmap tiles ...")
-    hm_grid = select_hm(kind, stats, rng)
+    hm_grid = select_hm(kind, walk, stats, rng)
     mean_map = np.zeros((D, W))
     for v in np.unique(hm_grid):
         mean_map[hm_grid == v] = stats[(v & 0xFFF, (v >> 15) & 1, (v >> 14) & 1)][2]
 
-    path_layer = np.where(np.isin(kind, (CLIFF, CRAMP_L, CRAMP_U)), 9, 0).astype(np.uint16)
+    # Original cliff path grammar: lower band = 43 (slope), upper/cliff = 9.
+    # Floor cells stamped with 182 keep path 0 so they stay walkable.
+    hm_ids = hm_grid & 0x0FFF
+    path_layer = np.zeros((D, W), np.uint16)
+    path_layer[kind == CLIFF] = 9
+    path_layer[kind == CRAMP_U] = 9
+    path_layer[kind == CRAMP_L] = 43
+    # Upper / corner kit tiles are solid even if they sit on the lower band mask.
+    path_layer[np.isin(hm_ids, [166, 217, 180, 181])] = 9
 
     print("painting textures ...")
     tex = paint_textures(kind, hm_grid, biome_idx, hm2tex, rng)

@@ -1,21 +1,48 @@
 #!/usr/bin/env python3
-"""Canonical generator for the "Caldera Loop" custom Level 1 for Nanosaur.
+"""Canonical generator for the "Pangaea Basin" 1/4-scale custom Level 1.
 
 Produces:
   Data/Terrain/Level1.ter, Data/Terrain/Level1Pro.ter (same geometry, Pro has
-  ~30% more enemies/powerups), Data/Terrain/Level1.trt (verbatim copy of the
-  original tileset), Data/Images/Map.tga (GPS map, RLE colormapped 8-bit,
-  matching the format the game's TGA.c loader expects), and
-  tools/level_preview.png (human-review render).
+  scaled-up enemies & powerups matching original Level1Pro.ter ratios),
+  Data/Terrain/Level1.trt (verbatim copy of the original tileset),
+  Data/Images/Map.tga (GPS map, RLE colormapped 8-bit, matching TGA.c),
+  and tools/level_preview.png (human-review render).
 
-Design: a ring of five biome basins arranged counterclockwise around a large
-impassable central mesa, joined by cliff-walled connector canyons.
+Design: An organic, asymmetric S-curve valley & basin world (~6,000-6,800
+BFS-playable tiles) centered inside the 270x355 grid (roughly cols 80..190,
+rows 110..248):
+  - Zone 1: Emerald Marsh (NW) — lush grass, 2-3 organic lakes (hm=41) with
+    a shallow-ford (hm=67) lake island, Start (S), Portal P0, 5x Species 0 eggs,
+    Fern/Bamboo/Cypress/StickPalm groves, Mushrooms, Boulders, SporePods,
+    Rex + Stego.
+  - Zone 2: Obsidian Lava Gorge (NE) — dark volcanic ash/basalt, wide organic
+    lava river/basin (hm=67) with FLOOR (hm=85) islands including a central
+    Portal Island (P1), 2 StepStone bridges (parm=(0,0,0,1), spaced 3.2-3.5
+    tiles apart over flat hm=67 lava with nearby LavaPatch parm3=0), 1 raised
+    basalt overlook (hm=109 with smooth walkable ramp), 2 GasVents, 5x Species 1
+    eggs, Fern/PinePalm, Bushes (parm3=1 Tricer ambushes), Ptera + Tricer + Rex.
+  - Zone 3: Crystal Canyon & Oasis Crossroads (Central/W) — tan/ochre canyon
+    with a Crystal Bowl (MAKEDUST sand + ~24 Crystals 0..2), a Palm Oasis
+    (hm=41 pool), a western canyon loop connecting back to Emerald Marsh,
+    Portal P2, RollBoulders on hm=255 canyon rims overlooking the trail,
+    5x Species 2 eggs, StickPalm/MainPalm/Fern, SporePods,
+    Spitter + Rex + Tricer + Ptera.
+  - Zone 4: Ancient Nest Lagoon (South Endgame) — scenic endgame lake (hm=41)
+    with Portal P3 on a hm=109 overlook terrace (walkable ramp), 4 raised
+    Nest Terraces/Spires (hm=109/128 walkable ramps + hm=178 spires with
+    GasVents beside them), 5x Species 3 eggs (on nest terraces/spires) +
+    5x Species 4 eggs (on lagoon islands/shores), Bamboo/MainPalm/StickPalm/Fern,
+    GasVents, PowerUps, mixed endgame enemies.
 
-All heightmap geometry reuses the original game's heightmap tiles.  Ramp/cliff
-transitions are picked by edge/corner matching against the desired corner
-heights so that adjacent tiles line up without cracks.  Cliff-band textures
-are copied from the original level's (heightmap-tile, flip) -> texture
-association so walls look authentic.
+Engine fidelity:
+  - Continuous vertex heightfield V[0..D, 0..W] where every tile (r,c) gets
+    an hm_tile whose post-flip pixel[0,0] strictly equals V[r,c], eliminating
+    vertex spikes and cracks.
+  - Smooth multi-tile ramps on walkable path=0 (normal.y > 0.85; max step <= 20).
+  - Clean cliff kit (original 166/167/180/181/182/217/235 + exact vertex-matched
+    cliff skirt/wall tiles) with path=9 on CLIFF/CRAMP_U and path=43 on CRAMP_L.
+  - 100% IT_WATER coverage of hm=41 and 100% IT_LAVA coverage of hm=67 lava.
+  - TILE_ATTRIB_WATER only on hm<=47 water tiles; TILE_ATTRIB_LAVA only on hm=67 lava.
 
 Deterministic: fixed RNG seed.
 """
@@ -41,7 +68,7 @@ BUNDLE = ROOT / "build" / "RelWithDebInfo" / "Nanosaur.app" / "Contents" / "Reso
 
 W, D = 270, 355           # map size in tiles (cols, rows)
 TILE_PX = 32              # Oreo map pixels per tile
-SEED = 20260801
+SEED = 20261120
 
 # ---------------------------------------------------------------- item types
 IT_START, IT_POWERUP, IT_TRICER, IT_REX, IT_LAVA = 0, 1, 2, 3, 4
@@ -50,49 +77,61 @@ IT_TREE, IT_BOULDER, IT_MUSHROOM, IT_BUSH, IT_WATER = 10, 11, 12, 13, 14
 IT_CRYSTAL, IT_SPITTER, IT_STEPSTONE, IT_ROLLBOULDER, IT_SPOREPOD = 15, 16, 17, 18, 19
 ENEMY_TYPES = (IT_TRICER, IT_REX, IT_PTERA, IT_STEGO, IT_SPITTER)
 
-# powerup parm0 (verified against AddPowerUp in src/Items/Triggers.c)
+# tree parm0 (Items.c AddTree)
+TREE_FERN, TREE_STICKPALM, TREE_BAMBOO, TREE_CYPRESS, TREE_MAINPALM, TREE_PINEPALM = range(6)
+
+# powerup parm0 (Triggers.c AddPowerUp)
 POW_HEAT, POW_LASER, POW_TRI, POW_HEALTH, POW_SHIELD, POW_NUKE, POW_SONIC = range(7)
 
 # ------------------------------------------------------------- terrain kinds
-CLIFF, CRAMP_L, CRAMP_U = 0, 1, 2
-FLOOR, LOW67, PAD109 = 3, 4, 5
-LK_SOFT, LK_SHELF, LK_DEEP, LK_BED = 6, 7, 8, 9
-LV_SOFT, LV_BED = 10, 11
-MD_RAMP, MD_PAD = 12, 13
-LOW_RAMP, PAD_RAMP = 14, 15
-N_KINDS = 16
+KIND_CLIFF = 0
+KIND_CRAMP_U = 1
+KIND_CRAMP_L = 2
+KIND_FLOOR = 3
+KIND_WATER_BED = 4
+KIND_WATER_SHELF = 5
+KIND_FORD = 6
+KIND_LAVA_BED = 7
+KIND_TERRACE_109 = 8
+KIND_TERRACE_128 = 9
+KIND_SPIRE_178 = 10
+KIND_WALK_RAMP = 11
 
-# (lo, hi) plateau range each kind spans (heightmap pixel values, worldY = px*4)
-KIND_RANGE = {
-    CLIFF: (255, 255), CRAMP_L: (85, 149), CRAMP_U: (151, 254),
-    FLOOR: (85, 85), LOW67: (67, 67), PAD109: (109, 109),
-    LK_SOFT: (67, 85), LK_SHELF: (67, 67), LK_DEEP: (41, 67), LK_BED: (41, 41),
-    LV_SOFT: (67, 85), LV_BED: (67, 67),
-    MD_RAMP: (85, 224), MD_PAD: (224, 224),
-    LOW_RAMP: (67, 85), PAD_RAMP: (85, 109),
-}
-FLAT_TILE = {CLIFF: 0, FLOOR: 6, LOW67: 7, PAD109: 5,
-             LK_SHELF: 7, LK_BED: 8, LV_BED: 7, MD_PAD: 31}
-# Lake/lava/mesa ramps use SSE; cliff walls use the original fixed kit (below).
-RAMP_CANDIDATES = {
-    LK_SOFT: (22, 37, 48, 38, 23),
-    LV_SOFT: (22, 37, 48, 38, 23),
-    LK_DEEP: (24, 40, 39, 51, 35),
-    MD_RAMP: (1, 32, 2, 17),
-    # Original Level 1 uses these gradual 85→109 transitions around its
-    # raised shelves; without them tile 5 forms a vertical ledge at tile 6.
-    LOW_RAMP: (22, 37, 48, 38, 23),
-    PAD_RAMP: (11, 12, 13, 26, 41, 86),
-}
-# Original Level1 cliff kit: 2-tile orth stacks + 3-tile diagonal stamps.
-# Facing = direction toward the low/walkable side.
+# Zone IDs
+ZONE_MARSH = 0
+ZONE_LAVA = 1
+ZONE_CANYON = 2
+ZONE_LAGOON = 3
+
+# ------------------------------------------------------------ texture weaves
+# Verified against Level1.ter attributes and RGB averages:
+MARSH_GRASS = [19, 20, 21, 38, 39]          # lush green grass
+MARSH_SHORE = [74, 89]                      # muddy shore
+WATER_MARSH_TEX = [23, 24, 42, 43]          # TILE_ATTRIB_WATER (0x80)
+WATER_LAGOON_TEX = [223, 224, 231, 232]     # TILE_ATTRIB_WATER (0x80)
+
+LAVA_ROCK = [148, 149, 164, 165, 170, 185, 186, 195, 207]  # dark volcanic basalt
+LAVA_TEX = [137, 138, 151, 152, 0xC000 | 137, 0xC000 | 138, 0x8000 | 151, 0x4000 | 152]  # TILE_ATTRIB_LAVA (0x20)
+
+CANYON_TEX = [189, 190, 200, 201, 132]      # tan/ochre canyon
+CRYSTAL_SAND = [144, 145, 160, 161]         # TILE_ATTRIB_MAKEDUST (0x10)
+
+LAGOON_SHORE = [19, 20, 21, 74, 89, 189, 190]
+TERRACE_TEX = [189, 190, 200, 201, 132]
+SPIRE_TEX = [148, 164, 185, 186]
+
+CLIFF_PLATEAU_MARSH = [17, 36, 189, 190, 200, 201]
+CLIFF_PLATEAU_LAVA = [148, 149, 164, 165, 207, 185]
+CLIFF_PLATEAU_CANYON = [17, 36, 189, 190, 200, 201]
+CLIFF_PLATEAU_LAGOON = [17, 36, 189, 200, 201]
+
+# Original Level1 cliff kit (orth stacks + diagonal corners)
 CLIFF_ORTH = {  # facing -> (lower_tid, upper_tid, fx, fy)
     "E": (167, 166, 0, 0),
     "W": (167, 166, 1, 0),
     "S": (235, 217, 0, 0),
     "N": (235, 217, 0, 1),
 }
-# Diagonal high-tip -> flip; 180 stamps toward cliff, 182 toward floor.
 CLIFF_DIAG = {"SW": (0, 0), "SE": (1, 0), "NW": (0, 1), "NE": (1, 1)}
 CLIFF_TEX = {  # (tid, fx, fy) -> full texture value from original Level1
     (167, 0, 0): 20561, (167, 0, 1): 20560, (167, 1, 0): 4176, (167, 1, 1): 4177,
@@ -103,67 +142,15 @@ CLIFF_TEX = {  # (tid, fx, fy) -> full texture value from original Level1
     (180, 0, 0): 16496, (180, 0, 1): 50, (180, 1, 0): 49264, (180, 1, 1): 32880,
     (182, 0, 0): 16516, (182, 0, 1): 132, (182, 1, 0): 49355, (182, 1, 1): 32971,
 }
-CLIFF_PATH43 = {167, 235, 182}
-KIT_HM_IDS = sorted(
-    {t for v in RAMP_CANDIDATES.values() for t in v}
-    | set(FLAT_TILE.values())
-    | {166, 167, 180, 181, 182, 217, 235}
-)
-
-WALKABLE_KINDS = {FLOOR, LOW67, PAD109, LOW_RAMP, PAD_RAMP}
-BOWL_KINDS = {LK_SOFT, LK_SHELF, LK_DEEP, LK_BED, LV_SOFT, LV_BED}
-
-# ------------------------------------------------------------ biome geometry
-# (name, center(col,row), radii(rx,rz)) — 40% smaller, ring pulled tighter
-BIOMES = [
-    ("Emerald Shallows", (101, 216), (17, 17)),
-    ("Fern Canyons",     (97, 152), (14, 20)),
-    ("Ember Flats",      (135, 124), (23, 16)),
-    ("Crystal Scar",     (172, 162), (16, 19)),
-    ("Nest Caldera",     (166, 222), (18, 17)),
-]
-MESA = ((135, 180), (22, 26))
-# short connector bridges between nearby basin edges
-CONNECTORS = [
-    ("Shallows->Fern",  [(100, 200), (98, 186), (97, 172)], (0.4, 0.7)),
-    ("Fern->Ember",     [(110, 145), (120, 135), (128, 125)], (0.45,)),
-    ("Ember->Crystal",  [(150, 125), (158, 140), (165, 152)], (0.35, 0.7)),
-    ("Crystal->Nest",   [(172, 175), (170, 190), (168, 205)], (0.5,)),
-    ("Nest->Shallows",  [(150, 225), (130, 225), (112, 218)], (0.35, 0.7)),
-]
-FERN_BLOBS = [(90, 145, 3), (102, 155, 3), (92, 160, 4), (100, 165, 3)]
-
-# Feature intents — positions are auto-snapped onto real floor after geometry.
-# Lakes: (biome_idx, half_w, half_h) — rectangular deep beds so an 8x8 water
-# item fits entirely in LK_BED (never on soft fringe / flat floor).
-LAKE_INTENTS = [
-    (0, 5, 5),   # 11x11 bed
-    (3, 5, 4),
-    (4, 5, 5),
-]
-# Ember lava: cover most of biome 2; sparse jump platforms farther apart.
-EMBER_BIOME = 2
-EMBER_PLATFORM_COUNT = 6          # including the start island
-EMBER_PLATFORM_MIN_GAP = 14       # tiles between platform centers
-EMBER_PLATFORM_RADIUS = 1         # 3x3 floor islands
-# Nest pads: how many to try in Nest Caldera (biome 4)
-NEST_PAD_COUNT = 2
-
-# ------------------------------------------------------------ texture weaves
-SOUTH_GRASS = [189, 190, 200, 201]
-NORTH_GRASS_FLIP = [17, 36, 0x8011, 0x8024, 0x4011, 0xC011]
-EMBER_MESA = [0x8011, 0x8024, 0x4011, 0xC011]
-JUNGLE_MIX = [144, 145, 160, 161, 38, 39]
-CRYSTAL_MIX = [144, 145, 160, 161]
-NEST_WATERSIDE = [223, 224, 231, 232]
-LAVA_BED = [137, 138, 151, 152, 0xC000 | 137, 0xC000 | 138, 0x8000 | 151, 0x4000 | 152]
-LAVA_FRINGE = [164, 165, 148, 149]
-WATER_BED = [23, 24, 42, 43]
-SHORE = [74, 75, 78, 89, 90]
 WALL_FALLBACK = [64, 65, 66, 122, 80, 81]
 
+TILE_ATTRIB_MAKEDUST = 1 << 4
 TILE_ATTRIB_LAVA = 1 << 5
 TILE_ATTRIB_WATER = 1 << 7
+
+PATH_OPEN = 0
+PATH_SOLID_ALL = 9
+PATH_SLOPEFORCE = 43
 
 
 # =========================================================================
@@ -198,60 +185,9 @@ class Original:
             axis=1).astype(np.uint8)
         self.n_tex_tiles = n_tex
 
-    def tile_pixels(self, tid, fx, fy):
-        t = self.hm_tiles[tid].astype(np.float64)
-        if fx:
-            t = t[:, ::-1]
-        if fy:
-            t = t[::-1, :]
-        return t
-
-
-def tile_stats(orig):
-    """(tid,fx,fy) -> (corners NW,NE,SW,SE), (edge means N,S,W,E), mean."""
-    stats = {}
-    for tid in range(len(orig.hm_tiles)):
-        for fx in (0, 1):
-            for fy in (0, 1):
-                t = orig.tile_pixels(tid, fx, fy)
-                stats[(tid, fx, fy)] = (
-                    (t[0, 0], t[0, -1], t[-1, 0], t[-1, -1]),
-                    (t[0].mean(), t[-1].mean(), t[:, 0].mean(), t[:, -1].mean()),
-                    t.mean(),
-                )
-    return stats
-
-
-def derive_hm_to_tex(orig):
-    """Most common texture value used on each (hm tile, flip) in the original."""
-    counters = {}
-    ids = orig.hm & 0x0FFF
-    mask = np.isin(ids, KIT_HM_IDS)
-    for r, c in zip(*np.nonzero(mask)):
-        v = int(orig.hm[r, c])
-        key = (v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1)
-        counters.setdefault(key, Counter())[int(orig.tex[r, c])] += 1
-    return {k: cnt.most_common(1)[0][0] for k, cnt in counters.items()}
-
-
-def derive_texture_palette(orig, hm_tid, limit=24, min_fraction=0.01):
-    """Weighted, common original textures used by one heightmap-tile class."""
-    mask = (orig.hm & 0x0FFF) == hm_tid
-    values = [int(v) for v in orig.tex[mask]]
-    by_id = Counter(v & 0x0FFF for v in values)
-    max_count = max(by_id.values())
-    palette = []
-    for tid, count in by_id.most_common(limit):
-        if count < len(values) * min_fraction:
-            continue
-        # Keep the common original flip for each distinct texture ID.
-        full = Counter(v for v in values if (v & 0x0FFF) == tid).most_common(1)[0][0]
-        palette.extend([full] * max(1, round(16 * count / max_count)))
-    return palette
-
 
 # =========================================================================
-# Geometry
+# Geometry helpers
 # =========================================================================
 def dilate8(mask):
     out = mask.copy()
@@ -266,293 +202,513 @@ def dilate8(mask):
     return out
 
 
-def build_geometry(rng):
+def dilate4(mask):
+    out = mask.copy()
+    out[1:, :] |= mask[:-1, :]
+    out[:-1, :] |= mask[1:, :]
+    out[:, 1:] |= mask[:, :-1]
+    out[:, :-1] |= mask[:, 1:]
+    return out
+
+
+def erode4(mask):
+    out = mask.copy()
+    out[1:, :] &= mask[:-1, :]
+    out[:-1, :] &= mask[1:, :]
+    out[:, 1:] &= mask[:, :-1]
+    out[:, :-1] &= mask[:, 1:]
+    return out
+
+
+def paint_capsule(cc, rr, p0, p1, r0, r1=None, warp=None):
+    """Smooth tapered capsule mask between p0=(c,r) and p1=(c,r)."""
+    if r1 is None:
+        r1 = r0
+    c0, r_0 = p0
+    c1, r_1 = p1
+    dx, dz = c1 - c0, r_1 - r_0
+    l2 = dx * dx + dz * dz
+    if l2 < 1e-6:
+        t = np.zeros_like(cc, dtype=np.float64)
+    else:
+        t = np.clip(((cc - c0) * dx + (rr - r_0) * dz) / l2, 0.0, 1.0)
+    px_c = c0 + t * dx
+    px_r = r_0 + t * dz
+    rad = r0 + t * (r1 - r0)
+    if warp is not None:
+        rad = rad + warp
+    return ((cc - px_c) ** 2 + (rr - px_r) ** 2) <= rad ** 2
+
+
+def paint_blob(cc, rr, cx, cz, rx, rz, ang_deg=0.0, warp=None):
+    a = math.radians(ang_deg)
+    ca, sa = math.cos(a), math.sin(a)
+    dc = cc - cx
+    dr = rr - cz
+    u = dc * ca + dr * sa
+    v = -dc * sa + dr * ca
+    scale = 1.0 if warp is None else (1.0 + warp)
+    return (u / (rx * scale)) ** 2 + (v / (rz * scale)) ** 2 <= 1.0
+
+
+def smooth_noise_field(cc, rr):
+    """Smooth deterministic organic perturbation in [-1, 1] without abrupt spikes."""
+    return (
+        0.50 * np.sin(cc * 0.14 + rr * 0.09)
+        + 0.30 * np.cos(cc * 0.08 - rr * 0.17 + 1.2)
+        + 0.20 * np.sin((cc + rr) * 0.22 + 0.5)
+    )
+
+
+def carve_ramp_platform(V, target_mask, target_h, walkable_mask, base_h=85, max_step=18):
+    """Raise/lower a terrace plateau onto V with smooth multi-tile ramps inside walkable_mask.
+
+    Computes BFS tile distance within walkable_mask from target_mask and ramps linearly
+    so adjacent tile steps never exceed max_step (keeping normal.y > 0.85).
+    """
+    steps_needed = max(1, math.ceil(abs(target_h - base_h) / max_step))
+    dist = np.full((D, W), -1, dtype=np.int32)
+    dq = deque()
+    for r, c in zip(*np.nonzero(target_mask)):
+        dist[r, c] = 0
+        dq.append((int(r), int(c)))
+    while dq:
+        r, c = dq.popleft()
+        nd = dist[r, c] + 1
+        if nd > steps_needed:
+            continue
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < D and 0 <= nc < W and walkable_mask[nr, nc] and dist[nr, nc] < 0:
+                dist[nr, nc] = nd
+                dq.append((nr, nc))
+    ramp_mask = (dist > 0) & (dist <= steps_needed)
+    for r, c in zip(*np.nonzero(target_mask)):
+        V[r, c] = target_h
+    for r, c in zip(*np.nonzero(ramp_mask)):
+        frac = 1.0 - (dist[r, c] / (steps_needed + 1.0))
+        hval = int(round(base_h + (target_h - base_h) * frac))
+        if target_h > base_h:
+            V[r, c] = max(V[r, c], hval)
+        else:
+            V[r, c] = min(V[r, c], hval)
+    return ramp_mask
+
+
+def ensure_smooth_walkable_heightfield(V, walkable_mask, locked_mask, max_step=18):
+    """Relax unlocked walkable vertices until every adjacent walkable pair has |dV| <= max_step."""
+    for _ in range(40):
+        changed = False
+        for r, c in zip(*np.nonzero(walkable_mask & ~locked_mask)):
+            vals = []
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < D and 0 <= nc < W and walkable_mask[nr, nc]:
+                    vals.append(int(V[nr, nc]))
+            if not vals:
+                continue
+            lo = max(v - max_step for v in vals)
+            hi = min(v + max_step for v in vals)
+            cur = int(V[r, c])
+            if lo <= hi:
+                nv = min(max(cur, lo), hi)
+            else:
+                nv = int(round(sum(vals) / len(vals)))
+            if nv != cur:
+                V[r, c] = nv
+                changed = True
+        if not changed:
+            break
+
+
+# =========================================================================
+# Level layout: "Pangaea Basin" — S-curve valley & basin world
+# =========================================================================
+def build_world(rng):
     cc, rr = np.meshgrid(np.arange(W), np.arange(D))
+    noise = smooth_noise_field(cc, rr)
 
-    def ellipse(cx, cz, rx, rz):
-        return ((cc - cx) / rx) ** 2 + ((rr - cz) / rz) ** 2 <= 1.0
+    # ---- Zone 1: Emerald Marsh (NW, ~1,700 tiles) ----
+    # Roughly cols 82..126, rows 112..164
+    z_marsh = (
+        paint_blob(cc, rr, 102, 136, 20.5, 19.0, -15, warp=0.14 * noise)
+        | paint_blob(cc, rr, 92, 152, 12.5, 13.0, 20, warp=0.12 * noise)
+        | paint_blob(cc, rr, 114, 124, 12.5, 11.0, 10, warp=0.10 * noise)
+    )
 
-    walk = np.zeros((D, W), bool)
-    for _, (cx, cz), (rx, rz) in BIOMES:
-        walk |= ellipse(cx, cz, rx, rz)
+    # ---- Zone 2: Obsidian Lava Gorge (NE, ~1,600 tiles) ----
+    # Roughly cols 132..186, rows 112..164
+    z_lava = (
+        paint_blob(cc, rr, 159, 137, 21.0, 17.5, 12, warp=0.12 * noise)
+        | paint_blob(cc, rr, 143, 124, 11.5, 10.0, -18, warp=0.10 * noise)
+        | paint_blob(cc, rr, 173, 153, 11.5, 11.5, 25, warp=0.10 * noise)
+    )
 
-    conn_masks = []
-    for _, pts, pockets in CONNECTORS:
-        m = np.zeros((D, W), bool)
-        seg_len = [math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
-        total = sum(seg_len)
-        acc = 0.0
-        for i in range(len(pts) - 1):
-            (x0, z0), (x1, z1) = pts[i], pts[i + 1]
-            steps = max(2, int(seg_len[i] * 2))
-            for s in range(steps + 1):
-                f = s / steps
-                t = (acc + f * seg_len[i]) / total
-                hw = 4.0
-                for tp in pockets:
-                    hw += 2.5 * math.exp(-((t - tp) / 0.07) ** 2)
-                x, z = x0 + f * (x1 - x0), z0 + f * (z1 - z0)
-                r0, r1 = int(z - hw), int(z + hw) + 1
-                c0, c1 = int(x - hw), int(x + hw) + 1
-                sub = (
-                    (cc[r0:r1, c0:c1] - x) ** 2 + (rr[r0:r1, c0:c1] - z) ** 2
-                ) <= hw * hw
-                m[r0:r1, c0:c1] |= sub
-            acc += seg_len[i]
-        conn_masks.append(m)
-        walk |= m
+    # ---- Zone 3: Crystal Canyon & Oasis Crossroads (Central/W, ~1,500 tiles) ----
+    # S-curve sweeping SW from Lava Gorge / central crossroads, plus western canyon loop back to Marsh
+    z_canyon = (
+        paint_capsule(cc, rr, (165, 164), (144, 180), 7.5, 8.2, warp=0.8 * noise)
+        | paint_blob(cc, rr, 132, 182, 14.5, 11.5, -15, warp=0.12 * noise)   # Crystal Bowl + Crossroads
+        | paint_blob(cc, rr, 109, 189, 12.0, 10.5, 10, warp=0.10 * noise)   # Palm Oasis
+        | paint_capsule(cc, rr, (99, 185), (93, 163), 5.2, 5.5, warp=0.7 * noise)  # Western canyon loop -> Marsh
+    )
 
-    # impassable central mesa + Fern canyon blobs
-    (mx, mz), (mrx, mrz) = MESA
-    walk &= ~ellipse(mx, mz, mrx, mrz)
-    for bx, bz, br in FERN_BLOBS:
-        walk &= ~ellipse(bx, bz, br, br)
+    # ---- Zone 4: Ancient Nest Lagoon (South Endgame, ~1,500 tiles) ----
+    # Sweeping SE from Oasis/Crossroads into scenic southern lagoon, cols 115..178, rows 200..250
+    z_lagoon = (
+        paint_capsule(cc, rr, (121, 198), (132, 213), 6.5, 7.5, warp=0.6 * noise)
+        | paint_blob(cc, rr, 148, 226, 21.6, 17.8, -8, warp=0.12 * noise)
+        | paint_blob(cc, rr, 168, 218, 10.5, 10.0, 20, warp=0.10 * noise)
+    )
 
-    # containment margin: nothing walkable within 6 tiles of the map edge
+    # ---- Main S-curve connectors ----
+    conn_marsh_lava = paint_capsule(cc, rr, (121, 127), (138, 127), 5.2, 5.2, warp=0.5 * noise)
+    conn_lava_canyon = paint_capsule(cc, rr, (171, 155), (162, 169), 5.0, 5.0, warp=0.4 * noise)
+    conn_canyon_lagoon = paint_capsule(cc, rr, (130, 193), (136, 207), 5.2, 5.2, warp=0.4 * noise)
+
+    walk = z_marsh | z_lava | z_canyon | z_lagoon | conn_marsh_lava | conn_lava_canyon | conn_canyon_lagoon
+
+    # Carve organic rocky mesa pillars/peninsulas inside canyons so terrain feels hand-crafted
+    rock_pillars = (
+        paint_blob(cc, rr, 125, 160, 7.8, 11.0, 8)     # central ridge dividing Marsh & Lava from Canyon
+        | paint_blob(cc, rr, 107, 168, 4.8, 5.8, -10)  # western canyon bend divider
+        | paint_blob(cc, rr, 150, 198, 6.8, 5.8, 12)   # ridge between Crystal Crossroads & Lagoon east
+    )
+    walk &= ~rock_pillars
+
+    # Containment margin
     walk[:6, :] = walk[-6:, :] = False
     walk[:, :6] = walk[:, -6:] = False
 
-    kind = np.full((D, W), CLIFF, np.uint8)
-    kind[walk] = FLOOR
+    # Clean isolated 1-tile pinholes / single-tile spurs for crisp cliff kit grammar
+    for _ in range(2):
+        n_card = (
+            np.roll(walk, 1, 0).astype(int) + np.roll(walk, -1, 0).astype(int)
+            + np.roll(walk, 1, 1).astype(int) + np.roll(walk, -1, 1).astype(int)
+        )
+        walk |= (~walk) & (n_card >= 3)
+        walk &= (walk & (n_card >= 2))
 
-    # cliff ramp bands: chebyshev distance 1 and 2 from walkable
+    # Zone map with smooth organic noise-warped boundaries (no straight geometric seams!)
+    warp_c = cc + 4.5 * noise
+    warp_r = rr + 4.5 * np.roll(noise, 7, axis=0)
+    d_m = (warp_c - 102) ** 2 + (warp_r - 137) ** 2
+    d_l = (warp_c - 159) ** 2 + (warp_r - 137) ** 2
+    d_c = (warp_c - 122) ** 2 + (warp_r - 183) ** 2
+    d_g = (warp_c - 148) ** 2 + (warp_r - 224) ** 2
+    zone = np.argmin(np.stack([d_m, d_l, d_c, d_g]), axis=0).astype(np.uint8)
+    zone[z_marsh] = ZONE_MARSH
+    zone[z_lava] = ZONE_LAVA
+    zone[z_canyon] = ZONE_CANYON
+    zone[z_lagoon] = ZONE_LAGOON
+    # Smooth organic transition across Marsh<->Lava connector and Lava<->Canyon trail
+    marsh_lava_split = 130.0 + 3.2 * noise
+    zone[conn_marsh_lava & (cc < marsh_lava_split)] = ZONE_MARSH
+    zone[conn_marsh_lava & (cc >= marsh_lava_split)] = ZONE_LAVA
+    # Organic Canyon-Lagoon blend around rows 197..204
+    canyon_lagoon_split = 201.0 + 2.8 * noise
+    zone[(z_canyon | z_lagoon) & (rr >= canyon_lagoon_split) & (cc > 118)] = ZONE_LAGOON
+
+    # Cliff bands around walkable basin
+    kind = np.full((D, W), KIND_CLIFF, dtype=np.uint8)
+    kind[walk] = KIND_FLOOR
+
     d1 = dilate8(walk) & ~walk
     d2 = dilate8(dilate8(walk)) & ~walk & ~d1
-    kind[d1] = CRAMP_L
-    kind[d2] = CRAMP_U
+    kind[d1] = KIND_CRAMP_L
+    kind[d2] = KIND_CRAMP_U
 
-    feature = np.zeros((D, W), bool)     # cells reserved by lakes/lava/pads
+    # Safe interior floor helper (at least 2 tiles away from cliffs)
+    cliff_near2 = dilate8(dilate8(~walk))
 
-    def ring_ok(mask):
-        return bool(mask.any() and np.all(kind[mask] == FLOOR) and not np.any(feature[mask]))
+    # =====================================================================
+    # ZONE FEATURES (Water lakes, Lava river/bridges, Terraces, Crystal Bowl)
+    # =====================================================================
+    V = np.full((D + 1, W + 1), 255, dtype=np.int32)
 
-    def biome_floor_cells(bi, margin=3):
-        """Interior floor cells of a biome, kept clear of walls."""
-        bx, bz = BIOMES[bi][1]
-        rx, rz = BIOMES[bi][2]
-        interior = walk & ellipse(bx, bz, max(1, rx - margin), max(1, rz - margin))
-        interior &= (kind == FLOOR) & ~feature
-        # also keep a 1-tile buffer from non-floor
-        interior &= ~dilate8(kind != FLOOR)
-        return np.argwhere(interior)
+    # --- 1. Emerald Marsh Lakes (3 organic lakes, hm=41) + shallow ford island ---
+    marsh_lake_1 = (
+        paint_blob(cc, rr, 104, 139, 9.5, 8.0, 12, warp=0.14 * noise)
+        & walk & ~cliff_near2
+    )
+    marsh_island = paint_blob(cc, rr, 104, 139, 2.7, 2.4, 15, warp=0.16 * noise) & marsh_lake_1
+    marsh_ford = (
+        paint_capsule(cc, rr, (95, 139), (102, 139), 1.4, 1.5, warp=0.35 * noise)
+        & marsh_lake_1 & ~marsh_island
+    )
+    marsh_lake_1_water = marsh_lake_1 & ~marsh_island & ~marsh_ford
 
-    def core_fits_water(bed, deep):
-        """True if some 8x8 window lies entirely in the deep basin (bed|deep)."""
-        core = bed | deep
-        rows, cols = np.where(core)
-        if len(rows) == 0:
-            return False
-        r0, r1 = int(rows.min()), int(rows.max()) + 1
-        c0, c1 = int(cols.min()), int(cols.max()) + 1
-        for r in range(r0, r1 - 7):
-            for c in range(c0, c1 - 7):
-                if np.all(core[r:r + 8, c:c + 8]):
-                    return True
-        return False
+    marsh_lake_2 = (
+        paint_blob(cc, rr, 90, 151, 4.5, 4.0, -20, warp=0.12 * noise)
+        & walk & ~cliff_near2
+    )
+    marsh_lake_3 = (
+        paint_blob(cc, rr, 114, 122, 4.0, 3.5, 15, warp=0.10 * noise)
+        & walk & ~cliff_near2
+    )
 
-    def try_lake_at(cx, cz, hw, hh):
-        # Rectangular deep bed — axis-aligned so an 8x8 water item can sit inside.
-        bed = ((np.abs(cc - cx) <= hw) & (np.abs(rr - cz) <= hh))
-        deep = dilate8(bed) & ~bed
-        shelf = dilate8(bed | deep) & ~(bed | deep)
-        soft = dilate8(bed | deep | shelf) & ~(bed | deep | shelf)
-        # Soft is optional edge paint; only the carved basin must be clear floor.
-        if not ring_ok(bed | deep | shelf):
-            return None
-        soft = soft & (kind == FLOOR) & ~feature
-        if not core_fits_water(bed, deep):
-            return None
-        return bed, deep, shelf, soft, (bed | deep | shelf | soft)
+    # --- 3b. Palm Oasis in Zone 3 (around 109, 189) ---
+    oasis_pool = (
+        paint_blob(cc, rr, 109, 189, 4.8, 4.2, -12, warp=0.12 * noise)
+        & walk & ~cliff_near2
+    )
 
-    def place_lake(bi, hw, hh):
-        """Search biome floor for a recessed lake footprint; prefer near center."""
-        nonlocal feature
-        bx, bz = BIOMES[bi][1]
-        cells = biome_floor_cells(bi, margin=max(hw, hh) + 3)
-        if len(cells) == 0:
-            return None
-        # Sort by distance to biome center so lakes prefer the basin middle.
-        order = sorted(range(len(cells)),
-                       key=lambda i: (cells[i][1] - bx) ** 2 + (cells[i][0] - bz) ** 2)
-        trials = order[:40] + order[40::max(1, len(order) // 30)]
-        rng.shuffle(trials[5:])
-        for i in trials:
-            r, c = int(cells[i][0]), int(cells[i][1])
-            got = try_lake_at(c, r, hw, hh)
-            if got is None and (hw > 4 or hh > 4):
-                got = try_lake_at(c, r, max(4, hw - 1), max(4, hh - 1))
-            if got is None:
+    # --- 4. Ancient Nest Lagoon Lake (around 148, 219) with 2 organic islands ---
+    lagoon_lake = (
+        paint_blob(cc, rr, 148, 219, 11.2, 6.0, -5, warp=0.13 * noise)
+        & walk & ~cliff_near2
+    )
+    lagoon_island_w = paint_blob(cc, rr, 142, 219, 2.5, 2.3, -18, warp=0.15 * noise) & lagoon_lake
+    lagoon_island_e = paint_blob(cc, rr, 154, 218, 2.5, 2.3, 22, warp=0.15 * noise) & lagoon_lake
+    lagoon_ford_w = paint_capsule(cc, rr, (136, 219), (141, 219), 1.35, 1.4, warp=0.32 * noise) & lagoon_lake & ~lagoon_island_w
+    lagoon_ford_e = paint_capsule(cc, rr, (155, 218), (160, 218), 1.35, 1.4, warp=0.32 * noise) & lagoon_lake & ~lagoon_island_e
+    lagoon_water = lagoon_lake & ~lagoon_island_w & ~lagoon_island_e & ~lagoon_ford_w & ~lagoon_ford_e
+
+    all_water_beds = marsh_lake_1_water | marsh_lake_2 | marsh_lake_3 | oasis_pool | lagoon_water
+    all_fords = marsh_ford | lagoon_ford_w | lagoon_ford_e
+    all_water_islands = marsh_island | lagoon_island_w | lagoon_island_e
+
+    # --- 2. Obsidian Lava Gorge (NE): wide organic lava river/basin + Portal Island + 2 StepStone bridges ---
+    lava_basin = (
+        paint_blob(cc, rr, 159, 138, 17.5, 12.8, 10, warp=0.13 * noise)
+        & z_lava & walk & ~cliff_near2
+    )
+    lava_portal_island = paint_blob(cc, rr, 156, 138, 3.8, 3.4, -14, warp=0.14 * noise) & walk
+    lava_north_island = paint_blob(cc, rr, 155, 125, 3.1, 2.7, 18, warp=0.15 * noise) & walk
+    lava_east_island = paint_blob(cc, rr, 174, 141, 3.1, 2.7, -20, warp=0.15 * noise) & walk
+
+    lava_islands = lava_portal_island | lava_north_island | lava_east_island
+    lava_bed = lava_basin & ~lava_islands
+    bridge_a_channel = paint_capsule(cc, rr, (141, 138), (152, 138), 3.0, 3.0, warp=0.3 * noise) & walk & ~lava_islands
+    bridge_b_channel = paint_capsule(cc, rr, (160, 140), (171, 141), 3.0, 3.0, warp=0.3 * noise) & walk & ~lava_islands
+    lava_bed |= (bridge_a_channel | bridge_b_channel)
+    lava_bed &= ~lava_islands
+
+    # --- 2b. Raised Basalt Overlook (hm=109) in Zone 2 ---
+    lava_overlook = paint_blob(cc, rr, 142, 122, 3.0, 2.6, 12, warp=0.10 * noise) & walk & ~lava_bed & ~cliff_near2
+
+    # --- 3. Zone 3 Crystal Bowl (around 132, 182) ---
+    crystal_bowl = paint_blob(cc, rr, 132, 182, 8.5, 6.5, -15, warp=0.14 * noise) & walk & ~cliff_near2
+
+    # --- 4b. Zone 4 Nest Terraces/Spires in Ancient Nest Lagoon ---
+    lagoon_p3_terrace = paint_blob(cc, rr, 128, 217, 2.8, 2.6, 8, warp=0.08 * noise) & walk & ~lagoon_lake & ~cliff_near2
+    nest_terrace_a = paint_blob(cc, rr, 129, 234, 2.8, 2.5, -12, warp=0.08 * noise) & walk & ~lagoon_lake & ~cliff_near2
+    nest_terrace_b = paint_blob(cc, rr, 164, 232, 2.8, 2.5, 14, warp=0.08 * noise) & walk & ~lagoon_lake & ~cliff_near2
+    nest_terrace_c = paint_blob(cc, rr, 168, 215, 2.8, 2.4, -10, warp=0.08 * noise) & walk & ~lagoon_lake & ~dilate8(dilate8(dilate8(~walk)))
+    # Two raised spires (hm=178) safely inside both cliff & lake skirt buffers so ramps step down <= 20px on ALL sides!
+    cliff_near4 = dilate8(dilate8(dilate8(dilate8(~walk))))
+    cliff_near5 = dilate8(cliff_near4)
+    lake_near5 = dilate8(dilate8(dilate8(dilate8(dilate8(lagoon_lake)))))
+    nest_spire_1 = paint_blob(cc, rr, 168, 223, 2.0, 2.0) & walk & ~lake_near5 & ~cliff_near4
+    nest_spire_2 = paint_blob(cc, rr, 147, 237, 2.0, 2.0) & walk & ~lake_near5 & ~cliff_near5
+
+    # Build continuous vertex heightfield V (size D+1 x W+1)
+    walk_verts = np.zeros((D + 1, W + 1), dtype=bool)
+    for r, c in zip(*np.nonzero(walk)):
+        walk_verts[r:r + 2, c:c + 2] = True
+
+    V[:, :] = 255
+    ring1_v = dilate8(walk_verts) & ~walk_verts
+    V[ring1_v] = 149
+    V[walk_verts] = 85
+
+    def carve_vertex_ramp(tile_mask, target_h, walkable_tile_mask, base_h=85, max_step=18):
+        v_target = np.zeros((D + 1, W + 1), dtype=bool)
+        for r, c in zip(*np.nonzero(tile_mask)):
+            v_target[r:r + 2, c:c + 2] = True
+        v_walk = np.zeros((D + 1, W + 1), dtype=bool)
+        for r, c in zip(*np.nonzero(walkable_tile_mask)):
+            v_walk[r:r + 2, c:c + 2] = True
+
+        steps_needed = max(1, math.ceil(abs(target_h - base_h) / max_step))
+        dist = np.full((D + 1, W + 1), -1, dtype=np.int32)
+        dq = deque()
+        for r, c in zip(*np.nonzero(v_target)):
+            dist[r, c] = 0
+            V[r, c] = target_h
+            dq.append((int(r), int(c)))
+        while dq:
+            r, c = dq.popleft()
+            nd = dist[r, c] + 1
+            if nd > steps_needed:
                 continue
-            bed, deep, shelf, soft, whole = got
-            kind[bed], kind[deep], kind[shelf], kind[soft] = (
-                LK_BED, LK_DEEP, LK_SHELF, LK_SOFT)
-            feature |= dilate8(dilate8(whole))
-            return bed
-        return None
-
-    lake_cells = []
-    for bi, rx, rz in LAKE_INTENTS:
-        bed = place_lake(bi, rx, rz)
-        if bed is not None:
-            lake_cells.append((bi, bed))
-        else:
-            print(f"  warn: could not place lake intent biome={bi} size=({rx},{rz})")
-
-    # ---- Ember Flats: lava covers most of the biome; sparse jump platforms ----
-    lava_cells = []
-    ember_platforms = []  # (r, c) centers of floor islands
-    bi = EMBER_BIOME
-    bx, bz = BIOMES[bi][1]
-    ember_mask = walk & ellipse(bx, bz, BIOMES[bi][2][0], BIOMES[bi][2][1])
-    ember_floor = ember_mask & (kind == FLOOR) & ~feature
-
-    cand = np.argwhere(ember_floor)
-    rng.shuffle(cand)
-
-    def far_enough(cr, cc0, existing, gap=EMBER_PLATFORM_MIN_GAP):
-        for er, ec in existing:
-            if (cr - er) ** 2 + (cc0 - ec) ** 2 < gap * gap:
-                return False
-        return True
-
-    # Prefer start-friendly south/east island first, then spread.
-    seed_plats = [
-        (bz + BIOMES[bi][2][1] // 3, bx + BIOMES[bi][2][0] // 4),
-        (bz, bx), (bz - 4, bx - 6), (bz - 4, bx + 6),
-        (bz + 4, bx), (bz, bx - 8), (bz, bx + 8),
-    ]
-    for cr, cc0 in seed_plats + [tuple(x) for x in cand]:
-        if len(ember_platforms) >= EMBER_PLATFORM_COUNT or len(cand) == 0:
-            break
-        cr, cc0 = int(cr), int(cc0)
-        d2 = (cand[:, 0] - cr) ** 2 + (cand[:, 1] - cc0) ** 2
-        i = int(np.argmin(d2))
-        pr, pc = int(cand[i][0]), int(cand[i][1])
-        foot = ((rr - pr) ** 2 + (cc - pc) ** 2) <= EMBER_PLATFORM_RADIUS ** 2
-        if not (np.all(kind[foot] == FLOOR) and not np.any(feature[foot])):
-            continue
-        if not far_enough(pr, pc, ember_platforms):
-            continue
-        ember_platforms.append((pr, pc))
-
-    plat_union = np.zeros((D, W), bool)
-    for pr, pc in ember_platforms:
-        foot = ((rr - pr) ** 2 + (cc - pc) ** 2) <= EMBER_PLATFORM_RADIUS ** 2
-        plat_union |= foot
-
-    # Flood remaining ember floor with recessed lava (core bed + soft fringe).
-    lava_area = ember_floor & ~plat_union
-    if lava_area.any():
-        core = lava_area & ~dilate8(~lava_area)
-        if int(core.sum()) < 8:
-            core = lava_area
-        soft = dilate8(core) & ~core & (kind == FLOOR) & ~plat_union
-        leftover = lava_area & ~core & ~soft & (kind == FLOOR)
-        kind[core] = LV_BED
-        kind[soft | leftover] = LV_SOFT
-        feature |= dilate8(core | soft | leftover | plat_union)
-        lava_cells.append((core, True))
-    print(f"  ember platforms={len(ember_platforms)} lava_core="
-          f"{int(lava_cells[0][0].sum()) if lava_cells else 0}")
-
-    # ---- Nest pads: auto-snap into Nest Caldera floor ----
-    pad_cells = []
-    nest_bi = 4
-    nest_cands = biome_floor_cells(nest_bi, margin=4)
-    rng.shuffle(nest_cands)
-    for r, c in nest_cands:
-        if len(pad_cells) >= NEST_PAD_COUNT:
-            break
-        r, c = int(r), int(c)
-        # 2x2 pad with 1-tile ramp ring → block [r-1:r+3, c-1:c+3]
-        if not (1 <= r < D - 3 and 1 <= c < W - 3):
-            continue
-        block = np.zeros((D, W), bool)
-        block[r - 1:r + 3, c - 1:c + 3] = True
-        if not ring_ok(block):
-            continue
-        # keep pads at least egg-spacing apart so nest eggs stay far
-        if any((r - pr) ** 2 + (c - pc) ** 2 < 14 * 14 for pr, pc in pad_cells):
-            continue
-        kind[r - 1:r + 3, c - 1:c + 3] = MD_RAMP
-        kind[r:r + 2, c:c + 2] = MD_PAD
-        feature |= dilate8(block)
-        pad_cells.append((r, c))
-
-    # subtle floor variation: raised 109 pads and 67 lows on plain floor
-    interior = walk.copy()
-    # Build a cumulative wall buffer. Repeatedly intersecting with the same
-    # one-tile dilation only kept one tile clear despite the old comment.
-    wall_buffer = ~walk
-    for _ in range(3):                    # keep 3 tiles from any wall/feature
-        wall_buffer = dilate8(wall_buffer)
-    interior &= ~wall_buffer
-    interior &= ~feature
-    cand = np.argwhere(interior)
-    rng.shuffle(cand)
-    placed = 0
-    for r, c in cand:
-        if placed >= 25:
-            break
-        rad = rng.randint(2, 3)
-        blob = ((cc - c) ** 2 + (rr - r) ** 2) <= rad * rad
-        if np.all(kind[blob] == FLOOR) and not np.any(feature[blob]):
-            raised = placed % 2 == 0
-            collar = dilate8(blob) & ~blob & (kind == FLOOR) & ~feature
-            kind[blob] = PAD109 if raised else LOW67
-            kind[collar] = PAD_RAMP if raised else LOW_RAMP
-            feature |= dilate8(collar | blob)
-            placed += 1
-
-    # Raised pads must not sit against lake/lava ramps — that cracks the
-    # walkable heightmap (109 plateau vs soft 67–85 skirts).
-    near_bowl = dilate8(np.isin(kind, list(BOWL_KINDS)))
-    kind[(kind == PAD109) & near_bowl] = FLOOR
-    kind[(kind == PAD_RAMP) & near_bowl] = FLOOR
-
-    # A collar can be clipped where a variation meets another reserved
-    # feature. Fill any remaining flat-to-plateau contact with the matching
-    # transition kind instead of leaving a one-tile ledge.
-    for plateau, ramp in ((LOW67, LOW_RAMP), (PAD109, PAD_RAMP)):
-        for r, c in zip(*np.nonzero(kind == plateau)):
             for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nr, nc = r + dr, c + dc
-                if 0 <= nr < D and 0 <= nc < W and kind[nr, nc] == FLOOR:
-                    kind[nr, nc] = ramp
+                if 0 <= nr <= D and 0 <= nc <= W and v_walk[nr, nc] and dist[nr, nc] < 0:
+                    dist[nr, nc] = nd
+                    dq.append((nr, nc))
+        for r, c in zip(*np.nonzero((dist > 0) & (dist <= steps_needed))):
+            frac = 1.0 - (dist[r, c] / (steps_needed + 1.0))
+            hval = int(round(base_h + (target_h - base_h) * frac))
+            if target_h > base_h:
+                V[r, c] = max(V[r, c], hval)
+            else:
+                V[r, c] = min(V[r, c], hval)
+        return v_target
 
-    # biome index for every cell (nearest basin, normalized)
-    dist = np.stack([
-        ((cc - cx) / rx) ** 2 + ((rr - cz) / rz) ** 2
-        for _, (cx, cz), (rx, rz) in BIOMES])
-    biome_idx = np.argmin(dist, axis=0).astype(np.uint8)
+    # Walkable domain allowed to slope for ramps (excludes lakes+4-tile shore, lava, and cliff border tiles)
+    water_buffer = dilate8(dilate8(dilate8(dilate8(all_water_beds | all_fords | all_water_islands))))
+    lava_buffer = dilate8(lava_bed | lava_islands)
+    ramp_domain = walk & ~water_buffer & ~lava_buffer & ~dilate8(~walk)
 
-    return kind, walk, conn_masks, lake_cells, lava_cells, pad_cells, biome_idx, ember_platforms
+    # Carve raised terraces (hm=109, 128) with gentle ramps (max_step=14..15 -> normal.y > 0.90)
+    carve_vertex_ramp(lava_overlook, 109, ramp_domain, base_h=85, max_step=14)
+    carve_vertex_ramp(lagoon_p3_terrace, 109, ramp_domain, base_h=85, max_step=14)
+    carve_vertex_ramp(nest_terrace_a, 109, ramp_domain, base_h=85, max_step=14)
+    carve_vertex_ramp(nest_terrace_b, 128, ramp_domain, base_h=85, max_step=15)
+    carve_vertex_ramp(nest_terrace_c, 128, ramp_domain, base_h=85, max_step=15)
+
+    # Carve spires (hm=178) with smooth 6-step skirts (max_step=16 -> <=19px per tile on all sides!)
+    carve_vertex_ramp(nest_spire_1, 178, ramp_domain, base_h=85, max_step=16)
+    carve_vertex_ramp(nest_spire_2, 178, ramp_domain, base_h=85, max_step=16)
+
+    # 2. Water basins in vertex space:
+    cliff_v = np.zeros((D + 1, W + 1), dtype=bool)
+    for r, c in zip(*np.nonzero(~walk)):
+        cliff_v[r:r + 2, c:c + 2] = True
+
+    def carve_lake_vertices(bed_tile_mask, island_tile_mask=None, ford_tile_mask=None):
+        vb = np.zeros((D + 1, W + 1), dtype=bool)
+        for r, c in zip(*np.nonzero(bed_tile_mask)):
+            vb[r:r + 2, c:c + 2] = True
+
+        vi = np.zeros((D + 1, W + 1), dtype=bool)
+        if island_tile_mask is not None and island_tile_mask.any():
+            for r, c in zip(*np.nonzero(island_tile_mask)):
+                vi[r:r + 2, c:c + 2] = True
+        vf = np.zeros((D + 1, W + 1), dtype=bool)
+        if ford_tile_mask is not None and ford_tile_mask.any():
+            for r, c in zip(*np.nonzero(ford_tile_mask)):
+                vf[r:r + 2, c:c + 2] = True
+
+        no_41 = cliff_v | vi | dilate8(dilate8(vi)) | vf | dilate8(vf)
+        vb = vb & walk_verts & ~no_41
+
+        v_47 = dilate8(vb) & ~vb & walk_verts & ~cliff_v & ~vi & ~vf
+        v_67 = dilate8(vb | v_47) & ~(vb | v_47) & walk_verts & ~cliff_v & ~vi
+        v_67 |= ((vf | (dilate8(vi) & ~vi)) & walk_verts & ~cliff_v)
+
+        V[v_67] = np.minimum(V[v_67], 67)
+        V[v_47] = np.minimum(V[v_47], 47)
+        V[vb] = 41
+        V[(dilate8(vi) & ~vi) & walk_verts & ~cliff_v & (V < 67)] = 67
+        V[vi & walk_verts] = 85
+
+    carve_lake_vertices(marsh_lake_1_water, marsh_island, marsh_ford)
+    carve_lake_vertices(marsh_lake_2)
+    carve_lake_vertices(marsh_lake_3)
+    carve_lake_vertices(oasis_pool)
+    carve_lake_vertices(lagoon_water, lagoon_island_w | lagoon_island_e, lagoon_ford_w | lagoon_ford_e)
+
+    # 3. Lava basin in vertex space:
+    v_lava = np.zeros((D + 1, W + 1), dtype=bool)
+    for r, c in zip(*np.nonzero(lava_bed)):
+        v_lava[r:r + 2, c:c + 2] = True
+    v_lava_isl = np.zeros((D + 1, W + 1), dtype=bool)
+    for r, c in zip(*np.nonzero(lava_islands)):
+        v_lava_isl[r:r + 2, c:c + 2] = True
+    v_lava &= walk_verts & ~cliff_v & ~v_lava_isl
+    V[v_lava] = 67
+    V[v_lava_isl & walk_verts] = 85
+
+    # Lock cliff boundary vertices & feature plateaus, then smooth any residual >20px steps everywhere!
+    v_locked = cliff_v | (V <= 67) | v_lava_isl
+    for m in (marsh_island, lagoon_island_w, lagoon_island_e,
+              lava_overlook, lagoon_p3_terrace, nest_terrace_a, nest_terrace_b, nest_terrace_c,
+              nest_spire_1, nest_spire_2):
+        for r, c in zip(*np.nonzero(m)):
+            v_locked[r:r + 2, c:c + 2] = True
+
+    ensure_smooth_walkable_heightfield(V, walk_verts, v_locked, max_step=20)
+
+    # 4. Compute per-tile height stats from V[r..r+1, c..c+1]
+    c00 = V[:-1, :-1]
+    c01 = V[:-1, 1:]
+    c10 = V[1:, :-1]
+    c11 = V[1:, 1:]
+    tmax = np.maximum.reduce([c00, c01, c10, c11])
+    tmin = np.minimum.reduce([c00, c01, c10, c11])
+    tmean = 0.25 * (c00 + c01 + c10 + c11)
+
+    # Classify tiles accurately from V
+    is_water_bed = walk & (tmax == 41) & (tmin == 41)
+    is_water_47 = walk & (tmax <= 47) & ~is_water_bed
+    is_water_shore = walk & (tmin <= 47) & (tmax > 47)
+
+    # Lava tiles: flat hm=67 inside lava zone (and NOT marsh/lagoon fords!)
+    is_lava_tile = walk & (zone == ZONE_LAVA) & (tmax == 67) & (tmin == 67)
+    is_ford_tile = walk & (zone != ZONE_LAVA) & (tmax == 67) & (tmin == 67)
+    is_lava_rim = walk & (zone == ZONE_LAVA) & (tmin == 67) & (tmax == 85)
+
+    # Classify terraces & ramps
+    kind[is_water_bed] = KIND_WATER_BED
+    kind[is_water_47 | is_water_shore] = KIND_WATER_SHELF
+    kind[is_ford_tile] = KIND_FORD
+    kind[is_lava_tile] = KIND_LAVA_BED
+    kind[walk & (tmin == 109) & (tmax == 109)] = KIND_TERRACE_109
+    kind[walk & (tmin == 128) & (tmax == 128)] = KIND_TERRACE_128
+    kind[walk & (tmin == 178) & (tmax == 178)] = KIND_SPIRE_178
+    kind[walk & (kind == KIND_FLOOR) & ((tmin != 85) | (tmax != 85))] = KIND_WALK_RAMP
+
+    return {
+        "V": V,
+        "walk": walk,
+        "kind": kind,
+        "zone": zone,
+        "c00": c00, "c01": c01, "c10": c10, "c11": c11,
+        "tmax": tmax, "tmin": tmin, "tmean": tmean,
+        "is_water_bed": is_water_bed,
+        "is_water_47": is_water_47,
+        "is_water_shore": is_water_shore,
+        "is_lava_tile": is_lava_tile,
+        "is_lava_rim": is_lava_rim,
+        "is_ford_tile": is_ford_tile,
+        "marsh_island": marsh_island,
+        "lagoon_island_w": lagoon_island_w,
+        "lagoon_island_e": lagoon_island_e,
+        "lava_portal_island": lava_portal_island,
+        "lava_north_island": lava_north_island,
+        "lava_east_island": lava_east_island,
+        "lava_overlook": lava_overlook,
+        "crystal_bowl": crystal_bowl,
+        "lagoon_p3_terrace": lagoon_p3_terrace,
+        "nest_terrace_a": nest_terrace_a,
+        "nest_terrace_b": nest_terrace_b,
+        "nest_terrace_c": nest_terrace_c,
+        "nest_spire_1": nest_spire_1,
+        "nest_spire_2": nest_spire_2,
+        "rock_pillars": rock_pillars,
+    }
 
 
 # =========================================================================
-# Heightmap tile selection
+# Heightmap tile synthesis & cliff kit stamping
 # =========================================================================
-def corner_targets(kind):
-    lo = np.zeros((D, W)); hi = np.zeros((D, W))
-    for k, (l, h) in KIND_RANGE.items():
-        lo[kind == k] = l
-        hi[kind == k] = h
-    lop = np.zeros((D + 2, W + 2)); lop[1:-1, 1:-1] = lo
-    raw = np.maximum.reduce([lop[:-1, :-1], lop[:-1, 1:], lop[1:, :-1], lop[1:, 1:]])
-    return raw, lo, hi          # raw is (D+1, W+1)
-
-
-def pack_hm(tid, fx, fy):
-    return tid | (fx << 15) | (fy << 14)
+def make_bilinear_tile(nw, ne, sw, se):
+    """Create a 32x32 uint8 heightmap tile with exact corner values at [0,0],[0,31],[31,0],[31,31]."""
+    u = np.linspace(0.0, 1.0, 32)[None, :]
+    v = np.linspace(0.0, 1.0, 32)[:, None]
+    vals = (
+        nw * (1.0 - u) * (1.0 - v)
+        + ne * u * (1.0 - v)
+        + sw * (1.0 - u) * v
+        + se * u * v
+    )
+    arr = np.rint(vals).astype(np.uint8)
+    # Guarantee exact corners
+    arr[0, 0] = int(nw)
+    arr[0, 31] = int(ne)
+    arr[31, 0] = int(sw)
+    arr[31, 31] = int(se)
+    return arr
 
 
 def stamp_cliff_kit(kind, walk):
-    """Stamp original Level1 cliff grammar: orth 2-tile stacks + diagonal stamps.
+    """Stamp original Level1 cliff grammar on CRAMP_L / CRAMP_U / CLIFF, WITHOUT touching walkable floor!
 
-    Facing = direction toward walkable (low). Lower band uses 167/235 with
-    path 43; upper uses matching-flip 166/217 with path 9. Corners use
-    182/181/180 with matched flips. Diagonals are stamped before orth stacks
-    so 167 never sits adjacent to 235 (matches original Level1).
+    Crucial fix vs old generator: NEVER stamp 182 (which has a 145 spike) onto walkable path=0 tiles!
+    Instead, keep all walkable tiles strictly matching V[r,c], and only stamp cliff kit on
+    CLIFF / CRAMP_U / CRAMP_L tiles.
     """
     hm = np.zeros((D, W), np.uint16)
     assigned = np.zeros((D, W), bool)
@@ -568,40 +724,29 @@ def stamp_cliff_kit(kind, walk):
     TIP_CLIFF = {
         "SW": ("W", "S"), "SE": ("E", "S"), "NW": ("N", "W"), "NE": ("N", "E"),
     }
-    TIP_FLOOR = {
-        "SW": ("N", "E"), "SE": ("N", "W"), "NW": ("S", "E"), "NE": ("S", "W"),
-    }
 
     def inb(r, c):
         return 0 <= r < D and 0 <= c < W
 
     def lows_at(r, c):
-        out = []
-        for name, dr, dc in CARD:
-            nr, nc = r + dr, c + dc
-            if inb(nr, nc) and walk[nr, nc]:
-                out.append(name)
-        return out
+        return [name for name, dr, dc in CARD if inb(r + dr, c + dc) and walk[r + dr, c + dc]]
 
-    # Classify every lower-band cell before writing any tiles.
-    classes = {}  # (r,c) -> ("diag", tip) | ("orth", facing)
-    for r, c in zip(*np.nonzero(kind == CRAMP_L)):
+    classes = {}
+    for r, c in zip(*np.nonzero(kind == KIND_CRAMP_L)):
         lows = lows_at(r, c)
         key = frozenset(lows)
         if len(lows) == 2 and key in LOW_TO_TIP:
             classes[(r, c)] = ("diag", LOW_TO_TIP[key])
         elif len(lows) >= 1:
-            # Prefer the low side whose opposite neighbor is the upper/cliff band
             facing = lows[0]
             for f in lows:
                 odr, odc = STEP[OPP[f]]
                 nr, nc = r + odr, c + odc
-                if inb(nr, nc) and kind[nr, nc] in (CRAMP_U, CLIFF):
+                if inb(nr, nc) and kind[nr, nc] in (KIND_CRAMP_U, KIND_CLIFF):
                     facing = f
                     break
             classes[(r, c)] = ("orth", facing)
         else:
-            # No cardinal floor (outer tip / degenerate): face nearest walkable.
             facing = "S"
             best = 1e18
             for name, dr, dc in CARD:
@@ -613,385 +758,256 @@ def stamp_cliff_kit(kind, walk):
                         break
             classes[(r, c)] = ("orth", facing)
 
-    # Also promote orth cells that sit at a concave floor corner via 8-neighbors:
-    # if two adjacent orth facings would meet as 167|235, upgrade to diagonal.
-    for (r, c), (typ, facing) in list(classes.items()):
-        if typ != "orth":
-            continue
-        lows = set(lows_at(r, c))
-        # Re-check with diagonal walkable corners: floor SE of cell etc.
-        for tip, (fx, fy) in CLIFF_DIAG.items():
-            floor_dirs = TIP_FLOOR[tip]
-            if all(
-                any(
-                    inb(r + STEP[d][0] * k, c + STEP[d][1] * k)
-                    and walk[r + STEP[d][0] * k, c + STEP[d][1] * k]
-                    for k in (1,)
-                )
-                for d in floor_dirs
-            ) and not any(
-                inb(r + STEP[d][0], c + STEP[d][1]) and walk[r + STEP[d][0], c + STEP[d][1]]
-                for d in TIP_CLIFF[tip]
-            ):
-                # both floor-side cardinals are walkable and cliff-sides are not
-                if set(floor_dirs).issubset(lows) or len(lows) == 0:
-                    classes[(r, c)] = ("diag", tip)
-                    break
-
-    # Pass 1: diagonal stamps (181 / 180 / 182)
+    # Pass 1: diagonals (181 on CRAMP_L, 180 on CRAMP_U/CLIFF; NO 182 on walkable floor!)
     for (r, c), (typ, tip) in classes.items():
         if typ != "diag":
             continue
         fx, fy = CLIFF_DIAG[tip]
-        hm[r, c] = pack_hm(181, fx, fy)
+        hm[r, c] = 181 | (fx << 15) | (fy << 14)
         assigned[r, c] = True
-        # Outer diagonal (both cliff dirs) is where original places 180.
         cliff_dirs = TIP_CLIFF[tip]
         dr = STEP[cliff_dirs[0]][0] + STEP[cliff_dirs[1]][0]
         dc = STEP[cliff_dirs[0]][1] + STEP[cliff_dirs[1]][1]
         ur, uc = r + dr, c + dc
-        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF) and not assigned[ur, uc]:
-            hm[ur, uc] = pack_hm(180, fx, fy)
+        if inb(ur, uc) and kind[ur, uc] in (KIND_CRAMP_U, KIND_CLIFF) and not assigned[ur, uc]:
+            hm[ur, uc] = 180 | (fx << 15) | (fy << 14)
             assigned[ur, uc] = True
-        for name in cliff_dirs:
-            adr, adc = STEP[name]
-            for dist in (1, 2):
-                ur, uc = r + adr * dist, c + adc * dist
-                if not inb(ur, uc) or assigned[ur, uc]:
-                    continue
-                if kind[ur, uc] in (CRAMP_U, CLIFF):
-                    hm[ur, uc] = pack_hm(180, fx, fy)
-                    assigned[ur, uc] = True
-                    break
-        for name in TIP_FLOOR[tip]:
-            adr, adc = STEP[name]
-            fr, fc = r + adr, c + adc
-            if not inb(fr, fc) or assigned[fr, fc]:
-                continue
-            if kind[fr, fc] in (CRAMP_L, FLOOR, LOW67, PAD109):
-                hm[fr, fc] = pack_hm(182, fx, fy)
-                assigned[fr, fc] = True
 
-    # Pass 2: orth stacks on remaining lower-band cells
+    # Pass 2: orth stacks
     for (r, c), (typ, facing) in classes.items():
         if assigned[r, c] or typ != "orth":
             continue
-        if facing not in CLIFF_ORTH:
-            facing = "S"
         lo_tid, up_tid, fx, fy = CLIFF_ORTH[facing]
-        hm[r, c] = pack_hm(lo_tid, fx, fy)
+        hm[r, c] = lo_tid | (fx << 15) | (fy << 14)
         assigned[r, c] = True
         odr, odc = STEP[OPP[facing]]
         ur, uc = r + odr, c + odc
-        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF) and not assigned[ur, uc]:
-            hm[ur, uc] = pack_hm(up_tid, fx, fy)
+        if inb(ur, uc) and kind[ur, uc] in (KIND_CRAMP_U, KIND_CLIFF) and not assigned[ur, uc]:
+            hm[ur, uc] = up_tid | (fx << 15) | (fy << 14)
             assigned[ur, uc] = True
 
-    # Pass 3: any leftover CRAMP_L (should be rare)
-    for r, c in zip(*np.nonzero((kind == CRAMP_L) & ~assigned)):
-        lows = lows_at(r, c)
-        facing = lows[0] if lows else "S"
-        lo_tid, up_tid, fx, fy = CLIFF_ORTH.get(facing, CLIFF_ORTH["S"])
-        hm[r, c] = pack_hm(lo_tid, fx, fy)
-        assigned[r, c] = True
-        odr, odc = STEP[OPP[facing]]
-        ur, uc = r + odr, c + odc
-        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF) and not assigned[ur, uc]:
-            hm[ur, uc] = pack_hm(up_tid, fx, fy)
-            assigned[ur, uc] = True
-
-    # Pass 4: remaining CRAMP_U — upper tile facing walkable / lower band
-    for r, c in zip(*np.nonzero((kind == CRAMP_U) & ~assigned)):
-        facing = None
+    # Pass 3: remaining CRAMP_U
+    for r, c in zip(*np.nonzero((kind == KIND_CRAMP_U) & ~assigned)):
+        facing = "S"
         for name, dr, dc in CARD:
             nr, nc = r + dr, c + dc
-            if inb(nr, nc) and (walk[nr, nc] or kind[nr, nc] == CRAMP_L):
+            if inb(nr, nc) and (walk[nr, nc] or kind[nr, nc] == KIND_CRAMP_L):
                 facing = name
                 break
-        if facing is None:
-            facing = "S"
         _, up_tid, fx, fy = CLIFF_ORTH[facing]
-        hm[r, c] = pack_hm(up_tid, fx, fy)
+        hm[r, c] = up_tid | (fx << 15) | (fy << 14)
         assigned[r, c] = True
 
-    hm[kind == CLIFF] = 0
-    assigned[kind == CLIFF] = True
-
-    # Repair lower orth tiles whose low edge does not face walkable floor.
-    for r, c in zip(*np.nonzero(kind == CRAMP_L)):
-        tid = int(hm[r, c]) & 0x0FFF
-        if tid not in (167, 235):
-            continue
-        lows = lows_at(r, c)
-        if not lows:
-            continue
-        # Prefer unique floor side; else the side opposite upper/cliff band.
-        if len(lows) == 1:
-            facing = lows[0]
-        else:
-            facing = lows[0]
-            for f in lows:
-                odr, odc = STEP[OPP[f]]
-                nr, nc = r + odr, c + odc
-                if inb(nr, nc) and kind[nr, nc] in (CRAMP_U, CLIFF):
-                    facing = f
-                    break
-                # Also accept an already-stamped upper kit tile as the cliff side.
-                if inb(nr, nc) and (int(hm[nr, nc]) & 0x0FFF) in (166, 217, 180, 0):
-                    facing = f
-                    break
-        lo_tid, up_tid, fx, fy = CLIFF_ORTH[facing]
-        hm[r, c] = pack_hm(lo_tid, fx, fy)
-        odr, odc = STEP[OPP[facing]]
-        ur, uc = r + odr, c + odc
-        if inb(ur, uc) and kind[ur, uc] in (CRAMP_U, CLIFF):
-            ut = int(hm[ur, uc]) & 0x0FFF
-            if ut in (166, 217, 0, 180):
-                hm[ur, uc] = pack_hm(up_tid, fx, fy)
-
-    # Final cleanup: any remaining 167|235 adjacency → convert to 181.
-    for _ in range(2):
-        ids = hm & 0x0FFF
-        for r in range(D):
-            for c in range(W - 1):
-                a, b = int(ids[r, c]), int(ids[r, c + 1])
-                if {a, b} != {167, 235}:
-                    continue
-                for cc in (c, c + 1):
-                    if kind[r, cc] != CRAMP_L:
-                        continue
-                    lows = frozenset(lows_at(r, cc))
-                    tip = LOW_TO_TIP.get(lows, "SW")
-                    fx, fy = CLIFF_DIAG[tip]
-                    hm[r, cc] = pack_hm(181, fx, fy)
-                    break
-        for r in range(D - 1):
-            for c in range(W):
-                a, b = int(ids[r, c]), int(ids[r + 1, c])
-                if {a, b} != {167, 235}:
-                    continue
-                for rr in (r, r + 1):
-                    if kind[rr, c] != CRAMP_L:
-                        continue
-                    lows = frozenset(lows_at(rr, c))
-                    tip = LOW_TO_TIP.get(lows, "SW")
-                    fx, fy = CLIFF_DIAG[tip]
-                    hm[rr, c] = pack_hm(181, fx, fy)
-                    break
-
-    # A valid orthogonal stack has a fixed across-wall orientation: 167→166
-    # runs west/east according to its X flip, while 235→217 runs north/south
-    # according to its Y flip.  The old "double-thick" pass rewrote normal
-    # along-wall runs; retain the valid runs and turn only the impossible
-    # crossing pairs into a diagonal lower tile.
-    ids = hm & 0x0FFF
-    for r, c in zip(*np.nonzero((ids == 167) | (ids == 235))):
-        tid = int(ids[r, c])
-        fx, fy = (int(hm[r, c]) >> 15) & 1, (int(hm[r, c]) >> 14) & 1
-        upper = 166 if tid == 167 else 217
-        expected = ((0, -1) if fx == 0 else (0, 1)) if tid == 167 else \
-                   ((-1, 0) if fy == 0 else (1, 0))
-        bad_crossing = False
-        for _name, dr, dc in CARD:
-            nr, nc = r + dr, c + dc
-            if (dr, dc) == expected or not inb(nr, nc):
-                continue
-            if (int(hm[nr, nc]) & 0x0FFF) == upper:
-                bad_crossing = True
-                break
-        if bad_crossing and kind[r, c] == CRAMP_L:
-            tip = LOW_TO_TIP.get(frozenset(lows_at(r, c)), "SW")
-            dfx, dfy = CLIFF_DIAG[tip]
-            hm[r, c] = pack_hm(181, dfx, dfy)
-
+    hm[kind == KIND_CLIFF] = 0
+    assigned[kind == KIND_CLIFF] = True
     return hm, assigned
 
 
-def select_hm(kind, walk, stats, rng):
+def build_heightmaps(world, orig):
+    """Build exact vertex-matched hm_grid and hm_tiles list (<= 300 tiles)."""
+    kind = world["kind"]
+    walk = world["walk"]
+    V = world["V"]
+    c00, c01, c10, c11 = world["c00"], world["c01"], world["c10"], world["c11"]
+
     hm_grid, cliff_assigned = stamp_cliff_kit(kind, walk)
-    raw, lo, hi = corner_targets(kind)
-    cache = {}
-    flip_combos = ((0, 0), (1, 0), (0, 1), (1, 1))
-    for r in range(D):
-        for c in range(W):
-            if cliff_assigned[r, c]:
+
+    tile_bank = list(orig.hm_tiles)  # 0..247
+
+    # Prefer known clean flat tiles from original
+    exact_lut = {
+        (255, 255, 255, 255): 0,
+        (109, 109, 109, 109): 5,
+        (85, 85, 85, 85): 6,
+        (67, 67, 67, 67): 7,
+        (41, 41, 41, 41): 8,
+        (128, 128, 128, 128): 57,
+        (178, 178, 178, 178): 232,
+    }
+    synth_lut = {}
+
+    def get_exact_tile(nw, ne, sw, se):
+        key = (int(nw), int(ne), int(sw), int(se))
+        if key in exact_lut:
+            return exact_lut[key]
+        if key in synth_lut:
+            return synth_lut[key]
+        # Share synthesized tiles across all 4 flip symmetries!
+        # Let base tile have corners ck = (a, b, c, d) = (NW, NE, SW, SE).
+        # Applying flip (fx, fy) produces:
+        #   (0, 0) -> (a, b, c, d)
+        #   (1, 0) -> (b, a, d, c)
+        #   (0, 1) -> (c, d, a, b)
+        #   (1, 1) -> (d, c, b, a)
+        # Since each flip is an involution, ck = apply_flip(key, fx, fy)!
+        flips = [
+            ((nw, ne, sw, se), 0, 0),
+            ((ne, nw, se, sw), 1, 0),
+            ((sw, se, nw, ne), 0, 1),
+            ((se, sw, ne, nw), 1, 1),
+        ]
+        for ck, fx, fy in flips:
+            if ck in synth_lut and (synth_lut[ck] & 0xC000) == 0:
+                tid = synth_lut[ck] & 0x0FFF
+                val = tid | (fx << 15) | (fy << 14)
+                synth_lut[key] = val
+                return val
+        tid = len(tile_bank)
+        tile_bank.append(make_bilinear_tile(nw, ne, sw, se))
+        synth_lut[key] = tid
+        return tid
+
+    # Fill all walkable tiles with exact-corner bilinear tiles!
+    for r, c in zip(*np.nonzero(walk)):
+        hm_grid[r, c] = get_exact_tile(c00[r, c], c01[r, c], c10[r, c], c11[r, c])
+
+    # Fix convex/diagonal cliff corners bordering walk:
+    # Any non-walk tile (r, c) whose corner (0, 0) belongs to a walk tile's mesh quad
+    # (or any CRAMP_L tile where len(lows)==0 / diagonal 181 where corner[0,0] != V[r,c])
+    # must have post-flip corner[0,0] == V[r,c] == 85 (never 149/170/250 spikes!).
+    for r in range(1, D - 1):
+        for c in range(1, W - 1):
+            if walk[r, c]:
                 continue
-            k = kind[r, c]
-            if k in FLAT_TILE:
-                hm_grid[r, c] = FLAT_TILE[k]
+            touches_walk_corner = walk[r - 1, c - 1] or walk[r - 1, c] or walk[r, c - 1]
+            touches_walk_any = (
+                touches_walk_corner
+                or walk[r, c + 1] or walk[r + 1, c]
+                or walk[r + 1, c + 1] or walk[r - 1, c + 1] or walk[r + 1, c - 1]
+            )
+            if not touches_walk_any:
                 continue
-            if k not in RAMP_CANDIDATES:
-                # Should not happen for cliff bands (already stamped); leave 0.
-                continue
-            l, h = KIND_RANGE[k]
-            tgt = tuple(int(min(max(raw[rr, cx], l), h))
-                        for rr, cx in ((r, c), (r, c + 1), (r + 1, c), (r + 1, c + 1)))
-            key = (k, tgt)
-            got = cache.get(key)
-            if got is None:
-                te = (0.5 * (tgt[0] + tgt[1]), 0.5 * (tgt[2] + tgt[3]),
-                      0.5 * (tgt[0] + tgt[2]), 0.5 * (tgt[1] + tgt[3]))
-                best, best_err = None, 1e18
-                for tid in RAMP_CANDIDATES[k]:
-                    for fx, fy in flip_combos:
-                        cor, edg, _ = stats[(tid, fx, fy)]
-                        err = sum((a - b) ** 2 for a, b in zip(cor, tgt))
-                        err += 0.6 * sum((a - b) ** 2 for a, b in zip(edg, te))
-                        if err < best_err:
-                            best_err, best = err, (tid, fx, fy)
-                got = pack_hm(best[0], best[1], best[2])
-                cache[key] = got
-            hm_grid[r, c] = got
-    # Keep the diagonal floor-side 182 stamp. It is a real Level 1 transition
-    # tile, not a misplaced wall: replacing it with flat tile 6 opens a large
-    # height seam between a cliff corner and its walkable floor.
-    for r in range(D):
-        for c in range(W):
-            k = kind[r, c]
-            if k in FLAT_TILE and (int(hm_grid[r, c]) & 0x0FFF) != 182:
-                hm_grid[r, c] = FLAT_TILE[k]
-    repair_walkable_seams(hm_grid, kind, cliff_assigned, stats)
-    return hm_grid
+            v = int(hm_grid[r, c])
+            t = tile_bank[v & 0x0FFF]
+            if v & 0x8000:
+                t = t[:, ::-1]
+            if v & 0x4000:
+                t = t[::-1, :]
+            # If corner[0,0] mismatches V[r,c], OR if it's a diagonal 181/CRAMP_L touching walk
+            # whose corners don't match continuous V (85 on walk corners, 149/255 on cliff corners):
+            exp = (int(c00[r, c]), int(c01[r, c]), int(c10[r, c]), int(c11[r, c]))
+            got = (int(t[0, 0]), int(t[0, 31]), int(t[31, 0]), int(t[31, 31]))
+            if int(t[0, 0]) != int(c00[r, c]) or (kind[r, c] == KIND_CRAMP_L and got != exp):
+                hm_grid[r, c] = get_exact_tile(*exp)
 
+    # Path layer
+    path_layer = np.full((D, W), PATH_OPEN, dtype=np.uint16)
+    path_layer[kind == KIND_CLIFF] = PATH_SOLID_ALL
+    path_layer[kind == KIND_CRAMP_U] = PATH_SOLID_ALL
+    path_layer[kind == KIND_CRAMP_L] = PATH_SLOPEFORCE
+    hm_ids = hm_grid & 0x0FFF
+    path_layer[np.isin(hm_ids, [166, 217, 180])] = PATH_SOLID_ALL
 
-def repair_walkable_seams(hm_grid, kind, cliff_assigned, stats):
-    """Re-pick bowl ramps that crack against neighboring walkable flats."""
-    flip_combos = ((0, 0), (1, 0), (0, 1), (1, 1))
-
-    def edge_means(v):
-        tid, fx, fy = v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1
-        return stats[(tid, fx, fy)][1]  # N,S,W,E
-
-    walkish = np.isin(kind, list(WALKABLE_KINDS | BOWL_KINDS | {MD_RAMP, MD_PAD}))
-    for _ in range(3):
-        fixed = 0
-        pairs = []
-        for r in range(D):
-            for c in range(W - 1):
-                if walkish[r, c] and walkish[r, c + 1] \
-                        and not cliff_assigned[r, c] and not cliff_assigned[r, c + 1]:
-                    e0 = edge_means(int(hm_grid[r, c]))[3]
-                    e1 = edge_means(int(hm_grid[r, c + 1]))[2]
-                    if abs(e0 - e1) >= 30:
-                        pairs.append(("ew", r, c, e0, e1))
-        for r in range(D - 1):
-            for c in range(W):
-                if walkish[r, c] and walkish[r + 1, c] \
-                        and not cliff_assigned[r, c] and not cliff_assigned[r + 1, c]:
-                    e0 = edge_means(int(hm_grid[r, c]))[1]
-                    e1 = edge_means(int(hm_grid[r + 1, c]))[0]
-                    if abs(e0 - e1) >= 30:
-                        pairs.append(("ns", r, c, e0, e1))
-
-        for orient, r, c, e0, e1 in pairs:
-            if orient == "ew":
-                cells = ((r, c, 3, e1), (r, c + 1, 2, e0))
-            else:
-                cells = ((r, c, 1, e1), (r + 1, c, 0, e0))
-            for rr, cc, want_edge, neigh_h in cells:
-                k = kind[rr, cc]
-                if k not in RAMP_CANDIDATES:
-                    continue
-                best, best_err = int(hm_grid[rr, cc]), 1e18
-                for tid in RAMP_CANDIDATES[k]:
-                    for fx, fy in flip_combos:
-                        edg = stats[(tid, fx, fy)][1]
-                        err = (edg[want_edge] - neigh_h) ** 2
-                        if err < best_err:
-                            best_err = err
-                            best = pack_hm(tid, fx, fy)
-                # If no ramp matches the flat neighbor, collapse soft to shelf flat.
-                if best_err >= 30 * 30 and k in (LK_SOFT, LV_SOFT):
-                    best = FLAT_TILE[LK_SHELF]
-                    best_err = 0
-                    kind[rr, cc] = LK_SHELF if k == LK_SOFT else LV_BED
-                if best != hm_grid[rr, cc]:
-                    hm_grid[rr, cc] = best
-                    fixed += 1
-                break
-        if fixed == 0:
-            break
+    return hm_grid, path_layer, np.array(tile_bank, dtype=np.uint8)
 
 
 # =========================================================================
-# Texture layer
+# Texture layer (strict hazard attribute containment)
 # =========================================================================
-def paint_textures(kind, hm_grid, biome_idx, hm2tex, cliff_palette, rng):
-    tex = np.zeros((D, W), np.uint16)
-    near_lake = dilate8(dilate8(dilate8(np.isin(kind, list((LK_SOFT, LK_SHELF, LK_DEEP, LK_BED))))))
+def paint_textures(world, hm_grid, orig, rng):
+    kind = world["kind"]
+    zone = world["zone"]
+    walk = world["walk"]
+    tmax = world["tmax"]
+    is_water_bed = world["is_water_bed"]
+    is_water_47 = world["is_water_47"]
+    is_water_shore = world["is_water_shore"]
+    is_lava_tile = world["is_lava_tile"]
+    is_lava_rim = world["is_lava_rim"]
+    is_ford_tile = world["is_ford_tile"]
+    crystal_bowl = world["crystal_bowl"]
 
-    def weave(options):
-        return options[rng.randrange(len(options))]
+    tex = np.zeros((D, W), dtype=np.uint16)
 
+    def pick(opts):
+        return opts[rng.randrange(len(opts))]
+
+    # Map cliff kit textures from original
     for r in range(D):
         for c in range(W):
-            k = kind[r, c]
-            b = biome_idx[r, c]
             v = int(hm_grid[r, c])
             key = (v & 0x0FFF, (v >> 15) & 1, (v >> 14) & 1)
-            # Original cliff-kit textures always win when a kit hm tile is present
-            if key in CLIFF_TEX:
-                tex[r, c] = CLIFF_TEX[key]
-                continue
-            if key[0] in (166, 167, 180, 181, 182, 217, 235):
-                tex[r, c] = hm2tex.get(key, weave(WALL_FALLBACK))
-                continue
-            if k in (FLOOR, LOW67, PAD109, LOW_RAMP, PAD_RAMP):
-                if b == 0:
-                    tex[r, c] = weave(SOUTH_GRASS)
-                elif b == 1:
-                    tex[r, c] = weave(JUNGLE_MIX) if rng.random() < 0.25 else weave(SOUTH_GRASS)
-                elif b == 2:
-                    tex[r, c] = weave(NORTH_GRASS_FLIP)
-                elif b == 3:
-                    tex[r, c] = weave(CRYSTAL_MIX) if rng.random() < 0.4 else weave(SOUTH_GRASS)
+            k = kind[r, c]
+            z = zone[r, c]
+
+            if not walk[r, c]:
+                if key in CLIFF_TEX:
+                    tex[r, c] = CLIFF_TEX[key]
+                elif key[0] in (166, 167, 180, 181, 217, 235):
+                    tex[r, c] = pick(WALL_FALLBACK)
                 else:
-                    tex[r, c] = weave(NEST_WATERSIDE) if near_lake[r, c] else weave(SOUTH_GRASS)
-            elif k == CLIFF:
-                # The original's high tile-0 plateau has varied earthy
-                # textures. Reuse that palette instead of covering nearly the
-                # entire outside map with four repeated grass tiles.
-                tex[r, c] = weave(EMBER_MESA) if b == 2 else weave(cliff_palette)
-            elif k in (MD_RAMP, MD_PAD):
-                tex[r, c] = hm2tex.get(key, weave(WALL_FALLBACK))
-            elif k == LK_BED:
-                tex[r, c] = weave(NEST_WATERSIDE if b == 4 else WATER_BED)
-            elif k in (LK_DEEP, LK_SHELF):
-                tex[r, c] = weave(SHORE)
-            elif k == LK_SOFT:
-                tex[r, c] = weave(SHORE) if rng.random() < 0.5 else weave(SOUTH_GRASS)
-            elif k == LV_BED:
-                tex[r, c] = weave(LAVA_BED)
-            elif k == LV_SOFT:
-                tex[r, c] = weave(LAVA_FRINGE)
+                    # High cliff plateau (hm=255)
+                    if z == ZONE_MARSH:
+                        tex[r, c] = pick(CLIFF_PLATEAU_MARSH)
+                    elif z == ZONE_LAVA:
+                        tex[r, c] = pick(CLIFF_PLATEAU_LAVA)
+                    elif z == ZONE_CANYON:
+                        tex[r, c] = pick(CLIFF_PLATEAU_CANYON)
+                    else:
+                        tex[r, c] = pick(CLIFF_PLATEAU_LAGOON)
+                continue
+
+            # Walkable tiles: STRICT hazard containment!
+            # 1. Underwater (tmax <= 47): TILE_ATTRIB_WATER
+            if is_water_bed[r, c] or is_water_47[r, c]:
+                tex[r, c] = pick(WATER_LAGOON_TEX if z == ZONE_LAGOON else WATER_MARSH_TEX)
+            # 2. Lava bed (flat hm=67 in Zone 2): TILE_ATTRIB_LAVA
+            elif is_lava_tile[r, c]:
+                tex[r, c] = pick(LAVA_TEX)
+            # 3. Water shore / ford (dry or ankle-high bank, NEVER TILE_ATTRIB_WATER!)
+            elif is_water_shore[r, c] or is_ford_tile[r, c]:
+                tex[r, c] = pick(MARSH_SHORE)
+            # 4. Lava rim / Zone 2 volcanic basalt (NEVER TILE_ATTRIB_LAVA!)
+            elif z == ZONE_LAVA:
+                if k == KIND_TERRACE_109 or k == KIND_WALK_RAMP:
+                    tex[r, c] = pick([148, 149, 164, 165, 207])
+                else:
+                    tex[r, c] = pick(LAVA_ROCK)
+            # 5. Zone 1 Emerald Marsh
+            elif z == ZONE_MARSH:
+                if rng.random() < 0.08:
+                    tex[r, c] = pick(MARSH_SHORE)
+                else:
+                    tex[r, c] = pick(MARSH_GRASS)
+            # 6. Zone 3 Crystal Canyon & Oasis Crossroads
+            elif z == ZONE_CANYON:
+                if crystal_bowl[r, c] and k == KIND_FLOOR:
+                    tex[r, c] = pick(CRYSTAL_SAND)
+                else:
+                    tex[r, c] = pick(CANYON_TEX)
+            # 7. Zone 4 Ancient Nest Lagoon
+            else:
+                if k in (KIND_TERRACE_109, KIND_TERRACE_128, KIND_WALK_RAMP):
+                    tex[r, c] = pick(TERRACE_TEX)
+                elif k == KIND_SPIRE_178:
+                    tex[r, c] = pick(SPIRE_TEX)
+                else:
+                    tex[r, c] = pick(LAGOON_SHORE)
+
     return tex
 
 
 # =========================================================================
-# Items
+# Item placement
 # =========================================================================
 def px(col, row):
     return col * TILE_PX + 16, row * TILE_PX + 16
 
 
 class Placer:
-    def __init__(self, rng, bfs_set, kind, biome_idx):
+    def __init__(self, rng, bfs_set, world):
         self.rng = rng
         self.bfs = bfs_set
-        self.kind = kind
-        self.biome_idx = biome_idx
+        self.world = world
         self.items = []                     # (x, z, type, (p0,p1,p2,p3), pro_only)
         self.occupied = set()
-        self.protected = []                 # (col,row) with 3-tile clearance
+        self.protected = []                 # (col, row) with 3-tile clearance
         self.by_cat = {"enemy": [], "powerup": [], "tree": [], "scenery": []}
 
     def cell_free(self, col, row, cat, nn):
         if (col, row) in self.occupied:
             return False
         for pc, pr in self.protected:
-            # Eggs, portals, and the start all need real clearance too.
-            # Letting "special" placements bypass this was putting portals
-            # directly beside the start and replacing intended stepstones.
             if (col - pc) ** 2 + (row - pr) ** 2 < 3 ** 2:
                 return False
         if cat in self.by_cat and nn > 0:
@@ -1011,17 +1027,23 @@ class Placer:
         if protect:
             self.protected.append((col, row))
 
-    def scatter(self, n, cells, itype, parm_fn, cat, nn, pro_only=False,
-                walk_only=True):
+    def add_exact(self, x_px, z_px, itype, parms=(0, 0, 0, 0), cat="special",
+                  pro_only=False, protect=True):
+        """Add an item at sub-tile Oreo pixel coordinates (e.g., StepStone bridges)."""
+        col, row = int(x_px) // TILE_PX, int(z_px) // TILE_PX
+        self.items.append((int(round(x_px)), int(round(z_px)), itype, tuple(parms), pro_only))
+        self.occupied.add((col, row))
+        if protect:
+            self.protected.append((col, row))
+
+    def scatter(self, n, cells, itype, parm_fn, cat, nn, pro_only=False):
         placed = 0
         attempts = 0
         cells = list(cells)
-        while placed < n and attempts < n * 600 and cells:
+        while placed < n and attempts < max(200, n * 600) and cells:
             attempts += 1
             row, col = cells[self.rng.randrange(len(cells))]
-            if walk_only and (row, col) not in self.bfs:
-                continue
-            if self.kind[row, col] not in WALKABLE_KINDS:
+            if (row, col) not in self.bfs:
                 continue
             if not self.cell_free(col, row, cat, nn):
                 continue
@@ -1030,337 +1052,429 @@ class Placer:
         return placed
 
 
-def nearest_ok(placer, col, row, radius=12, avoid=(), clearance=0,
-               ignore_protected=False):
-    """Nearest BFS-walkable plain-floor cell to (col,row)."""
+def nearest_dry_cell(placer, world, col, row, allowed_mask=None, radius=16, avoid=(), clearance=0):
     best, bd = None, 1e18
     for r in range(max(0, row - radius), min(D, row + radius + 1)):
         for c in range(max(0, col - radius), min(W, col + radius + 1)):
-            if (r, c) not in placer.bfs or placer.kind[r, c] not in WALKABLE_KINDS:
+            if (r, c) not in placer.bfs:
                 continue
-            if not ignore_protected and not placer.cell_free(c, r, "special", 0):
+            if allowed_mask is not None and not allowed_mask[r, c]:
                 continue
-            if ignore_protected and (c, r) in placer.occupied:
+            if not placer.cell_free(c, r, "special", 0):
                 continue
-            if any((c - ac) ** 2 + (r - ar) ** 2 < clearance ** 2
-                   for ac, ar in avoid):
+            if any((c - ac) ** 2 + (r - ar) ** 2 < clearance ** 2 for ac, ar in avoid):
                 continue
             d = (c - col) ** 2 + (r - row) ** 2
             if d < bd:
                 bd, best = d, (c, r)
     if best is None:
-        raise SystemExit(f"no walkable cell near ({col},{row})")
+        raise SystemExit(f"no dry cell near ({col},{row})")
     return best
 
 
-def build_items(rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
-                lake_cells, lava_cells, pad_cells, stats, ember_platforms):
-    # BFS over walkable-ish cells (cliffs excluded). Lava is traversable but damaging.
-    path9 = np.isin(kind, (CLIFF, CRAMP_L, CRAMP_U))
-    open_walk = (~path9) & (mean_map <= 120.0)
+def compute_patch_centers(mask, min_gap=8):
+    """Cover 100% of `mask` tiles using 8x8 tile patches centered at (col, row).
 
-    # Start on an Ember jump platform (first reserved island).
-    if ember_platforms:
-        sr, sc = ember_platforms[0]
-    else:
-        bx, bz = BIOMES[EMBER_BIOME][1]
-        sc, sr = bx, bz
-    seed = None
-    for rad in range(0, 25):
-        for r in range(sr - rad, sr + rad + 1):
-            for c in range(sc - rad, sc + rad + 1):
-                if 0 <= r < D and 0 <= c < W and open_walk[r, c] \
-                        and kind[r, c] in WALKABLE_KINDS:
-                    seed = (r, c)
-                    break
-            if seed:
-                break
-        if seed:
-            break
-    if seed is None:
-        raise SystemExit("no walkable start cell")
+    Each 8x8 patch at (c, r) covers [c-4, c+4) x [r-4, r+4) in tile indices
+    (since patch center is tile center c+0.5, r+0.5, spanning +-4 tiles = [c-3.5, c+4.5]).
+    Greedy set cover over valid mask centers guarantees 100% coverage of `mask`!
+    """
+    cells = [(int(r), int(c)) for r, c in np.argwhere(mask)]
+    if not cells:
+        return []
+    uncovered = set(cells)
+    # Candidate centers: prefer interior mask cells so patches overlap minimal cliff/land,
+    # while allowing any mask cell if needed for 100% coverage.
+    chosen = []
+    # Also seed a coarse grid of centers every 7 tiles first for neat alignment
+    r0 = min(r for r, _ in cells)
+    c0 = min(c for _, c in cells)
+    r1 = max(r for r, _ in cells)
+    c1 = max(c for _, c in cells)
+    cell_set = set(cells)
+
+    def covered_by(cr, cc):
+        return {(r, c) for r in range(cr - 3, cr + 5) for c in range(cc - 3, cc + 5) if (r, c) in uncovered}
+
+    def covered_by_wide(cr, cc):
+        # Note: in Terrain/Items.c, patch center is at (cc+0.5, cr+0.5) * 140, scale=2.0 -> 8x8 tiles:
+        # [cc-3.5, cc+4.5] in x and [cr-3.5, cr+4.5] in z -> tile centers c+0.5 in [cc-3.5, cc+4.5] -> c in [cc-4, cc+4]!
+        # Wait: let's be conservative and require every mask tile (r, c) to lie in [cr-3, cr+4] x [cc-3, cc+4]
+        # (which is strictly inside [cc-3.5, cc+4.5]!).
+        return {(r, c) for r in range(cr - 3, cr + 5) for c in range(cc - 3, cc + 5) if (r, c) in uncovered}
+
+    while uncovered:
+        best_pt = None
+        best_cov = set()
+        # Evaluate candidate centers near remaining uncovered cells
+        sample = list(uncovered)
+        # Prefer centers that cover the most uncovered tiles and are well inside mask
+        candidates = set()
+        for ur, uc in sample:
+            for dr in range(-3, 4):
+                for dc in range(-3, 4):
+                    pt = (ur + dr, uc + dc)
+                    if pt in cell_set:
+                        candidates.add(pt)
+        if not candidates:
+            candidates = set(sample)
+        for cr, cc in candidates:
+            if any(abs(cr - ar) < min_gap - 3 and abs(cc - ac) < min_gap - 3 for ar, ac in chosen):
+                # allow closer only if needed to cover edge tiles
+                pass
+            cov = covered_by_wide(cr, cc)
+            if len(cov) > len(best_cov):
+                best_cov = cov
+                best_pt = (cr, cc)
+        if not best_pt or not best_cov:
+            # Fallback: pick any uncovered cell directly
+            best_pt = next(iter(uncovered))
+            best_cov = covered_by_wide(*best_pt) | {best_pt}
+        chosen.append(best_pt)
+        uncovered -= best_cov
+
+    return chosen
+
+
+def build_items(rng, world, hm_grid, path_layer):
+    walk = world["walk"]
+    kind = world["kind"]
+    zone = world["zone"]
+    V = world["V"]
+    is_water_bed = world["is_water_bed"]
+    is_water_47 = world["is_water_47"]
+    is_water_shore = world["is_water_shore"]
+    is_lava_tile = world["is_lava_tile"]
+    is_lava_rim = world["is_lava_rim"]
+    is_ford_tile = world["is_ford_tile"]
+
+    # Walkable tiles for BFS from Start:
+    # path == 0 and vertex height <= 185 (so hm=178 spires are walkable/BFS if ramped, and hm=255 cliffs are excluded)
+    walk_open = (path_layer == PATH_OPEN) & (world["tmax"] <= 185)
+
+    # Start in a safe grassy clearing in Zone 1 Emerald Marsh (NW, around col 88, row 135)
+    start_c, start_r = 88, 134
+    # Snap to flat hm=85 Marsh floor
+    dry_marsh = walk_open & (zone == ZONE_MARSH) & (kind == KIND_FLOOR) & ~dilate8(is_water_bed | is_water_47 | ~walk)
+    best_s = None
+    bd = 1e18
+    for r, c in np.argwhere(dry_marsh):
+        d = (c - start_c) ** 2 + (r - start_r) ** 2
+        if d < bd:
+            bd, best_s = d, (int(r), int(c))
+    sr, sc = best_s
+
+    # BFS from Start
     bfs = set()
-    dq = deque([seed])
-    bfs.add(seed)
+    dq = deque([(sr, sc)])
+    bfs.add((sr, sc))
     while dq:
         r, c = dq.popleft()
         for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nr, nc = r + dr, c + dc
-            if 0 <= nr < D and 0 <= nc < W and (nr, nc) not in bfs and open_walk[nr, nc]:
+            if 0 <= nr < D and 0 <= nc < W and (nr, nc) not in bfs and walk_open[nr, nc]:
                 bfs.add((nr, nc))
                 dq.append((nr, nc))
 
-    P = Placer(rng, bfs, kind, biome_idx)
+    P = Placer(rng, bfs, world)
 
-    biome_cells = [[] for _ in BIOMES]
+    # Dry walkable cells per zone (excludes water beds, underwater shelves, lava beds, and cliff rims)
+    dry_mask = walk_open & ~is_water_bed & ~is_water_47 & ~is_lava_tile
+    safe_dry_mask = dry_mask & ~dilate8(~walk) & ~is_water_shore & ~is_lava_rim
+
+    zone_dry = [[] for _ in range(4)]
+    zone_flat = [[] for _ in range(4)]
     for r, c in bfs:
-        if kind[r, c] in WALKABLE_KINDS:
-            biome_cells[biome_idx[r, c]].append((r, c))
-    conn_cells = []
-    for m in conn_masks:
-        cells = [(r, c) for r, c in zip(*np.nonzero(m))
-                 if (r, c) in bfs and kind[r, c] in WALKABLE_KINDS]
-        conn_cells.append(cells)
+        if safe_dry_mask[r, c]:
+            zone_dry[zone[r, c]].append((r, c))
+            if kind[r, c] == KIND_FLOOR:
+                zone_flat[zone[r, c]].append((r, c))
 
-    # ---------------- start / eggs / portals -----------------------------
-    scol, srow = seed[1], seed[0]
-    # Reserve the start before placing eggs/portals. Ember eggs must use the
-    # small lava islands, so their stepstone decoration is added afterwards
-    # only where an egg has not claimed the center.
-    platform_centers = [(pc, pr) for pr, pc in ember_platforms]
-    P.protected.append((scol, srow))
-    egg_anchor = {}
-    egg_spots = {}
-    EGG_MIN_DIST = 14          # tiles — eggs within a biome stay fairly far apart
+    # ---------------- Start (S) ----------------
+    # Aim East toward Marsh Lake & Lava Gorge
+    P.add(sc, sr, IT_START, (6, 0, 0, 0), "special", protect=True)
 
-    def place_egg_cluster(species, acol, arow, n_floor=5, preexisting=None):
-        # An anchor is only a radial reference; it may be a reserved platform.
-        acol, arow = nearest_ok(P, acol, arow, ignore_protected=True)
-        egg_anchor[species] = (acol, arow)
-        spots = list(preexisting or [])
-        tries = 0
-        while len(spots) < n_floor and tries < 8000:
-            tries += 1
-            ang = rng.random() * math.tau
-            rad = rng.uniform(EGG_MIN_DIST, EGG_MIN_DIST + 8)
-            c = int(acol + math.cos(ang) * rad)
-            r = int(arow + math.sin(ang) * rad)
-            if not (0 <= r < D and 0 <= c < W):
-                continue
-            if (r, c) not in P.bfs or kind[r, c] not in WALKABLE_KINDS:
-                continue
-            if not P.cell_free(c, r, "special", 0):
-                continue
-            if any((c - oc) ** 2 + (r - orow) ** 2 < EGG_MIN_DIST ** 2
-                   for oc, orow in spots):
-                continue
-            spots.append((c, r))
-        if len(spots) < n_floor:
-            # fallback: looser radius but keep min spacing
-            tries = 0
-            while len(spots) < n_floor and tries < 8000:
-                tries += 1
-                bi = species if species < 4 else 4
-                if not biome_cells[bi]:
+    # ---------------- Water & Lava Patches (100% coverage!) ----------------
+    # Water patches cover all hm=41 & hm=47 underwater tiles
+    water_need = is_water_bed | is_water_47
+    water_centers = compute_patch_centers(water_need, min_gap=7)
+    for r, c in water_centers:
+        P.add(c, r, IT_WATER, (0, 0, 0, 0), "special", protect=False)
+
+    # StepStone Bridges in Zone 2 Obsidian Lava Gorge:
+    # Build two StepStone bridges (parm=(0,0,0,1) reincarnating, spaced 3.2-3.5 tiles apart)
+    # over flat hm=67 lava tiles, keeping nearby LavaPatch parm3=0 (no fireballs camping bridges!).
+    bridge_points = []
+    # Bridge 1: West lava shore -> Portal Island along row 138 (4 stones spaced ~3.27 tiles)
+    row_b1 = 138
+    lava_cols_b1 = [c for c in range(138, 156) if is_lava_tile[row_b1, c]]
+    if len(lava_cols_b1) >= 4:
+        c_start = min(lava_cols_b1) + 1.0
+        c_end = max(lava_cols_b1) - 0.2
+        span = c_end - c_start
+        n_stones = max(3, math.ceil(span / 3.45) + 1)
+        for i in range(n_stones):
+            cf = c_start + (span * i / max(1, n_stones - 1))
+            if is_lava_tile[row_b1, int(cf)]:
+                bridge_points.append((cf, float(row_b1) + 0.5))
+
+    # Bridge 2: Portal Island -> East Lava Island along row 140 (3 stones spaced ~3.35 tiles)
+    row_b2 = 140
+    lava_cols_b2 = [c for c in range(158, 175) if is_lava_tile[row_b2, c]]
+    if len(lava_cols_b2) >= 4:
+        c_start = min(lava_cols_b2) + 1.5
+        c_end = max(lava_cols_b2) - 0.8
+        span = c_end - c_start
+        n_stones = 3 if span <= 7.2 else max(3, math.ceil(span / 3.45) + 1)
+        for i in range(n_stones):
+            cf = c_start + (span * i / max(1, n_stones - 1))
+            if is_lava_tile[row_b2, int(cf)]:
+                bridge_points.append((cf, float(row_b2) + 0.5))
+
+    for cf, rf in bridge_points:
+        P.add_exact(cf * TILE_PX, rf * TILE_PX, IT_STEPSTONE, (0, 0, 0, 1), "special", protect=True)
+
+    # Lava patches cover 100% of hm=67 lava tiles; parm3=0 near bridges, parm3=2 elsewhere
+    # Pass exclude_occupied or verify coverage after shifting off StepStone cells!
+    lava_centers = compute_patch_centers(is_lava_tile, min_gap=7)
+    lava_cov = np.zeros((D, W), dtype=bool)
+    for r, c in lava_centers:
+        if (c, r) in P.occupied:
+            # Find adjacent lava cell that still covers (r, c) and is unoccupied
+            alt = None
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < D and 0 <= nc < W and is_lava_tile[nr, nc] and (nc, nr) not in P.occupied:
+                        alt = (nr, nc)
+                        break
+                if alt:
                     break
-                r, c = biome_cells[bi][rng.randrange(len(biome_cells[bi]))]
-                c, r = int(c), int(r)
-                if (r, c) not in P.bfs or kind[r, c] not in WALKABLE_KINDS:
-                    continue
-                if not P.cell_free(c, r, "special", 0):
-                    continue
-                if any((c - oc) ** 2 + (r - orow) ** 2 < EGG_MIN_DIST ** 2
-                       for oc, orow in spots + [(acol, arow)]):
-                    continue
-                spots.append((c, r))
-        if len(spots) < n_floor:
-            raise SystemExit(f"could not cluster eggs for species {species} "
-                             f"(got {len(spots)})")
-        # Only add newly chosen spots (preexisting already in the level).
-        pre = set(preexisting or [])
-        for c, r in spots:
-            if (c, r) in pre:
-                continue
-            P.add(c, r, IT_EGG, (species, 0, 0, 1), "special", protect=True)
-        egg_spots[species] = spots
+            if alt:
+                r, c = alt
+        if (c, r) not in P.occupied:
+            near_bridge = any((c + 0.5 - bc) ** 2 + (r + 0.5 - br) ** 2 <= 9.0 ** 2 for bc, br in bridge_points)
+            parm3 = 0 if near_bridge else 2
+            P.add(c, r, IT_LAVA, (0, 0, 0, parm3), "special", protect=False)
+            lava_cov[max(0, r - 3):min(D, r + 5), max(0, c - 3):min(W, c + 5)] = True
+    # Cover any remaining uncovered lava tiles if a shifted center left an edge exposed
+    while True:
+        rem = np.argwhere(is_lava_tile & ~lava_cov)
+        if len(rem) == 0:
+            break
+        ur, uc = int(rem[0, 0]), int(rem[0, 1])
+        placed_extra = False
+        for dr in range(-3, 5):
+            for dc in range(-3, 5):
+                cr, cc_ = ur - dr, uc - dc
+                if 0 <= cr < D and 0 <= cc_ < W and is_lava_tile[cr, cc_] and (cc_, cr) not in P.occupied:
+                    near_bridge = any((cc_ + 0.5 - bc) ** 2 + (cr + 0.5 - br) ** 2 <= 9.0 ** 2 for bc, br in bridge_points)
+                    P.add(cc_, cr, IT_LAVA, (0, 0, 0, 0 if near_bridge else 2), "special", protect=False)
+                    lava_cov[max(0, cr - 3):min(D, cr + 5), max(0, cc_ - 3):min(W, cc_ + 5)] = True
+                    placed_extra = True
+                    break
+            if placed_extra:
+                break
+        if not placed_extra:
+            break
 
-    # species 0..3 near each biome center (auto-snapped)
-    for sp, (name, (cx, cz), _) in enumerate(BIOMES[:4]):
-        place_egg_cluster(sp, cx, cz)
-    # species 4: 2 on nest pads, 3 on floor — all share the same min spacing
-    pads_for_eggs = pad_cells[:2]
-    pad_spots = []
-    for pr, pc in pads_for_eggs:
-        P.add(pc, pr, IT_EGG, (4, 0, 0, 1), "special", protect=True)
-        pad_spots.append((pc, pr))
-    nx, nz = BIOMES[4][1]
-    place_egg_cluster(4, nx, nz, n_floor=5, preexisting=pad_spots)
+    # ---------------- Portals (P0..P3) ----------------
+    # P0: Zone 1 overlooking main marsh lake (around 98, 128)
+    p0_c, p0_r = nearest_dry_cell(P, world, 99, 128, allowed_mask=dry_mask, radius=14)
+    P.add(p0_c, p0_r, IT_PORTAL, (0, 0, 0, 0), "special", protect=True)
 
-    # start: aim toward Ember's egg cluster (species 2)
-    dcol = egg_anchor[2][0] - scol
-    drow = egg_anchor[2][1] - srow
-    aim = round(math.atan2(-dcol, -drow) / (math.tau / 8)) % 8
-    P.add(scol, srow, IT_START, (aim, 0, 0, 0), "special", protect=True)
+    # P1: Zone 2 central Portal Island in the lava basin (around 156, 138)
+    p1_mask = world["lava_portal_island"] & dry_mask
+    p1_c, p1_r = nearest_dry_cell(P, world, 156, 138, allowed_mask=p1_mask, radius=8)
+    P.add(p1_c, p1_r, IT_PORTAL, (1, 0, 0, 0), "special", protect=True)
 
-    # portals near egg clusters (auto-snap)
-    portal_biomes = [0, 1, 2, 4]
-    portal_avoid = [(scol, srow), *platform_centers]
-    for spots in egg_spots.values():
-        portal_avoid.extend(spots)
-    for pn, bi in enumerate(portal_biomes):
-        ac, ar = egg_anchor[bi]
-        c, r = nearest_ok(P, ac + 6, ar + 4, radius=24,
-                          avoid=portal_avoid, clearance=6)
-        P.add(c, r, IT_PORTAL, (pn, 0, 0, 0), "special", protect=True)
-        portal_avoid.append((c, r))
+    # P2: Zone 3 Crystal Canyon / Oasis Crossroads (around 120, 185)
+    p2_c, p2_r = nearest_dry_cell(P, world, 120, 185, allowed_mask=dry_mask, radius=12)
+    P.add(p2_c, p2_r, IT_PORTAL, (2, 0, 0, 0), "special", protect=True)
 
-    # ---------------- water / lava / step stones -------------------------
-    # Water only in the deep basin — never on soft fringe or flat floor.
-    DEEP_BASIN = {LK_BED, LK_DEEP}
+    # P3: Zone 4 Ancient Nest Lagoon on hm=109 overlook terrace (around 128, 217)
+    p3_mask = (kind == KIND_TERRACE_109) & world["lagoon_p3_terrace"]
+    p3_c, p3_r = nearest_dry_cell(P, world, 128, 217, allowed_mask=p3_mask, radius=6)
+    P.add(p3_c, p3_r, IT_PORTAL, (3, 0, 0, 0), "special", protect=True)
 
-    def water_item_ok(r, c):
-        """In-game water patch is 8x8 tiles; must sit entirely in bed|deep."""
-        r0, r1 = r - 3, r + 5
-        c0, c1 = c - 3, c + 5
-        if r0 < 0 or c0 < 0 or r1 > D or c1 > W:
-            return False
-        patch = kind[r0:r1, c0:c1]
-        return bool(np.all(np.isin(patch, list(DEEP_BASIN))))
+    # ---------------- Eggs (25 total: 5 per species 0..4) ----------------
+    egg_avoid = [(sc, sr), (p0_c, p0_r), (p1_c, p1_r), (p2_c, p2_r), (p3_c, p3_r)]
 
-    def lava_item_ok(r, c):
-        """Keep each fixed-height 8x8 lava mesh on the flat lava bed."""
-        r0, r1 = r - 3, r + 5
-        c0, c1 = c - 3, c + 5
-        return (r0 >= 0 and c0 >= 0 and r1 <= D and c1 <= W
-                and bool(np.all(kind[r0:r1, c0:c1] == LV_BED)))
+    def place_egg(species, col, row, mask=None, radius=14, min_sep=10):
+        c, r = nearest_dry_cell(
+            P, world, col, row,
+            allowed_mask=(mask if mask is not None else safe_dry_mask),
+            radius=radius,
+            avoid=egg_avoid,
+            clearance=min_sep,
+        )
+        P.add(c, r, IT_EGG, (species, 0, 0, 1), "special", protect=True)
+        egg_avoid.append((c, r))
+        return c, r
 
-    def patch_points(bed, min_gap=8, footprint_ok=None):
-        """Non-overlapping centers for square 8x8 water/lava meshes."""
-        cells = np.argwhere(bed)
-        if len(cells) == 0:
-            return []
-        if footprint_ok is not None:
-            candidates = [(int(r), int(c)) for r, c in cells if footprint_ok(int(r), int(c))]
-        else:
-            candidates = []
-        r0, c0 = cells.min(axis=0)
-        r1, c1 = cells.max(axis=0)
-        bedset = {(r, c) for r, c in cells}
-        if footprint_ok is None:
-            for gr in range(r0 + 3, r1 + 1, 8):
-                for gc in range(c0 + 3, c1 + 1, 8):
-                    best = min(bedset, key=lambda rc: (rc[0] - gr) ** 2 + (rc[1] - gc) ** 2)
-                    candidates.append(best)
-            candidates.append(tuple(cells.mean(axis=0).astype(int)))
-        accepted = []
-        for r, c in sorted(set(candidates)):
-            if (r, c) in bedset and all(
-                    max(abs(r - ar), abs(c - ac)) >= min_gap
-                    for ar, ac in accepted):
-                accepted.append((r, c))
-        return accepted
+    # Species 0 (5 eggs in Emerald Marsh, including 1 on the marsh lake island!)
+    place_egg(0, 104, 139, mask=world["marsh_island"] & dry_mask, radius=5, min_sep=4)
+    place_egg(0, 88, 156, min_sep=9)
+    place_egg(0, 100, 152, min_sep=9)
+    place_egg(0, 117, 131, min_sep=9)
+    place_egg(0, 107, 121, min_sep=9)
 
-    for bi, bed in lake_cells:
-        for r, c in patch_points(bed, footprint_ok=water_item_ok):
-            if (c, r) not in P.occupied:
-                P.add(c, r, IT_WATER, (0, 0, 0, 0), "special")
-            # if 8x8 won't fit, skip — never paint water onto flat surroundings
+    # Species 1 (5 eggs in Obsidian Lava Gorge, across islands/overlook/shores)
+    place_egg(1, 155, 125, mask=world["lava_north_island"] & dry_mask, radius=5, min_sep=6)
+    place_egg(1, 174, 141, mask=world["lava_east_island"] & dry_mask, radius=5, min_sep=6)
+    place_egg(1, 142, 122, mask=world["lava_overlook"] & (kind == KIND_TERRACE_109), radius=5, min_sep=6)
+    place_egg(1, 138, 144, min_sep=8)
+    place_egg(1, 173, 157, min_sep=8)
 
-    for bed, fire in lava_cells:
-        for r, c in patch_points(bed, footprint_ok=lava_item_ok):
-            if (c, r) not in P.occupied:
-                P.add(c, r, IT_LAVA, (0, 0, 0, 2 if fire else 0), "special")
+    # Species 2 (5 eggs in Crystal Canyon & Oasis Crossroads)
+    place_egg(2, 136, 177, min_sep=9)
+    place_egg(2, 127, 190, min_sep=9)
+    place_egg(2, 102, 192, min_sep=9)
+    place_egg(2, 93, 170, min_sep=9)
+    place_egg(2, 158, 170, min_sep=9)
 
-    # Step-stone items on Ember jump platforms (not packed on lava).
-    for pr, pc in ember_platforms[1:]:  # skip start island
-        if (pc, pr) not in P.occupied and kind[pr, pc] in WALKABLE_KINDS:
-            P.add(pc, pr, IT_STEPSTONE, (0, 0, 0, 0), "special")
+    # Species 3 (5 eggs in Ancient Nest Lagoon on nest terraces & spires!)
+    place_egg(3, 129, 234, mask=world["nest_terrace_a"] & (kind == KIND_TERRACE_109), radius=6, min_sep=6)
+    place_egg(3, 164, 232, mask=world["nest_terrace_b"] & (kind == KIND_TERRACE_128), radius=6, min_sep=6)
+    place_egg(3, 168, 215, mask=world["nest_terrace_c"] & (kind == KIND_TERRACE_128), radius=6, min_sep=6)
+    place_egg(3, 168, 223, mask=world["nest_spire_1"] & (kind == KIND_SPIRE_178), radius=5, min_sep=6)
+    place_egg(3, 147, 237, mask=world["nest_spire_2"] & (kind == KIND_SPIRE_178), radius=5, min_sep=6)
 
-    # ---------------- powerups -------------------------------------------
-    # The original Level 1's main playable island has 86 pickups across
-    # ~20,900 walkable low tiles.  This level has ~5,900 such tiles, so keep
-    # the same cadence (about 22 pickups, including connector rewards) rather
-    # than cramming the original absolute count into the smaller arenas.
-    POW_PLAN = [
-        (0, [POW_HEALTH, POW_LASER, POW_HEAT, POW_SHIELD]),
-        (1, [POW_LASER, POW_TRI, POW_SONIC, POW_HEALTH]),
-        # Ember is mostly lava — only a couple platform pickups fit.
-        (2, [POW_HEALTH, POW_SHIELD]),
-        (3, [POW_LASER, POW_TRI, POW_SONIC, POW_NUKE]),
-        (4, [POW_HEALTH, POW_LASER, POW_HEAT]),
+    # Species 4 (5 eggs in Ancient Nest Lagoon on lagoon islands & shores!)
+    place_egg(4, 142, 219, mask=world["lagoon_island_w"] & dry_mask, radius=5, min_sep=6)
+    place_egg(4, 154, 218, mask=world["lagoon_island_e"] & dry_mask, radius=5, min_sep=6)
+    place_egg(4, 138, 210, min_sep=8)
+    place_egg(4, 156, 210, min_sep=8)
+    place_egg(4, 168, 226, min_sep=8)
+
+    # ---------------- GasVents ----------------
+    # 2 GasVents in Obsidian Lava Gorge (Zone 2) + 3 beside Zone 4 hm=178 spires
+    gv_spots = [
+        (147, 126, (kind == KIND_FLOOR) & (zone == ZONE_LAVA)),
+        (162, 153, (kind == KIND_FLOOR) & (zone == ZONE_LAVA)),
+        (165, 224, dry_mask & (zone == ZONE_LAGOON)),
+        (143, 235, dry_mask & (zone == ZONE_LAGOON)),
+        (154, 237, dry_mask & (zone == ZONE_LAGOON)),
     ]
-    for bi, kinds_list in POW_PLAN:
-        lst = list(kinds_list)
+    for gc, gr, gmask in gv_spots:
+        c, r = nearest_dry_cell(P, world, gc, gr, allowed_mask=gmask, radius=8)
+        P.add(c, r, IT_GASVENT, (0, 0, 0, 0), "special", protect=True)
+
+    # ---------------- RollBoulders on hm=255 canyon rims overlooking Zone 3 trail ----------------
+    # Note: CRAMP_L is d1 (1 dilation), CRAMP_U is d2 (2 dilations), so KIND_CLIFF starts at 3 dilations!
+    rim_mask = (
+        (kind == KIND_CLIFF)
+        & dilate8(dilate8(dilate8((zone == ZONE_CANYON) & walk)))
+        & ~dilate8(dilate8(walk))
+    )
+    rim_cells = [(int(r), int(c)) for r, c in np.argwhere(rim_mask)]
+    rng.shuffle(rim_cells)
+    rb_placed = []
+    for r, c in rim_cells:
+        if len(rb_placed) >= 7:
+            break
+        if any((r - pr) ** 2 + (c - pc) ** 2 < 9 ** 2 for pr, pc in rb_placed):
+            continue
+        if 8 <= r < D - 8 and 8 <= c < W - 8:
+            P.add(c, r, IT_ROLLBOULDER, (0, 0, 0, 0), "scenery", protect=False)
+            rb_placed.append((r, c))
+
+    # ---------------- Crystal Bowl (~24 Crystals parm0=0..2 in Zone 3) ----------------
+    bowl_cells = [(int(r), int(c)) for r, c in np.argwhere(world["crystal_bowl"] & dry_mask) if (r, c) in bfs]
+    P.scatter(24, bowl_cells, IT_CRYSTAL, lambda i: (i % 3, 0, 0, 0), "scenery", 2.0)
+
+    # ---------------- Bushes (parm3=1 Tricer ambushes) ----------------
+    # Zone 2 volcanic bushes & Zone 3 canyon bushes
+    P.scatter(5, zone_flat[ZONE_LAVA], IT_BUSH, lambda i: (0, 0, 0, 1 if i < 4 else 0), "scenery", 4.0)
+    P.scatter(5, zone_flat[ZONE_CANYON], IT_BUSH, lambda i: (0, 0, 0, 1 if i < 3 else 0), "scenery", 4.0)
+
+    # ---------------- PowerUps (1/4-scale of original 86 -> ~24 normal, ~76 Pro) ----------------
+    # Original: 86 across 25,420 tiles; Pro: 287 across 25,420 tiles (~3.34x)
+    pow_plan = [
+        (ZONE_MARSH, [POW_HEALTH, POW_LASER, POW_HEAT, POW_TRI, POW_SHIELD]),
+        (ZONE_LAVA, [POW_HEALTH, POW_SHIELD, POW_LASER, POW_HEAT, POW_TRI, POW_SONIC]),
+        (ZONE_CANYON, [POW_HEALTH, POW_LASER, POW_TRI, POW_SONIC, POW_HEAT, POW_NUKE]),
+        (ZONE_LAGOON, [POW_HEALTH, POW_SHIELD, POW_LASER, POW_TRI, POW_HEAT, POW_SONIC, POW_NUKE]),
+    ]
+    for zi, plist in pow_plan:
+        lst = list(plist)
         rng.shuffle(lst)
-        got = P.scatter(len(lst), biome_cells[bi], IT_POWERUP,
-                        lambda i, l=lst: (l[i], 0, 0, 0), "powerup", 6.0)
+        got = P.scatter(len(lst), zone_dry[zi], IT_POWERUP, lambda i, l=lst: (l[i], 0, 0, 0), "powerup", 5.5)
         if got < len(lst):
-            raise SystemExit(f"powerup placement failed in biome {bi}")
-    # One reward at each connector keeps travel useful without making every
-    # short canyon a dense pickup corridor.
-    conn_pows = [POW_HEALTH, POW_HEAT, POW_TRI, POW_SHIELD, POW_LASER]
-    for i, pw in enumerate(conn_pows):
-        cells = conn_cells[i]
-        P.scatter(1, cells, IT_POWERUP, lambda _n, p=pw: (p, 0, 0, 0), "powerup", 6.0)
+            raise SystemExit(f"powerup placement failed in zone {zi} ({got}/{len(lst)})")
 
-    # ---------------- enemies --------------------------------------------
-    # These totals are the original Level 1 main-island population scaled to
-    # Caldera Loop's playable area.  Keeping the original mix matters: rex
-    # and spitter pressure should dominate, without turning tiny Ember
-    # platforms into an enemy pile.
-    ENEMY_PLAN = [
-        (0, [(IT_STEGO, 5), (IT_REX, 4)]),
-        (1, [(IT_SPITTER, 13), (IT_PTERA, 7), (IT_STEGO, 5), (IT_TRICER, 2), (IT_REX, 5)]),
-        (2, [(IT_PTERA, 2), (IT_TRICER, 2), (IT_REX, 4)]),
-        (3, [(IT_SPITTER, 10), (IT_REX, 13)]),
-        (4, [(IT_PTERA, 12), (IT_REX, 17), (IT_SPITTER, 15), (IT_STEGO, 11), (IT_TRICER, 11)]),
+    # Pro extra powerups (~52 more -> ~76 total, matching Level1Pro's ~3.3x ratio)
+    pro_pows = (
+        [POW_TRI] * 14 + [POW_LASER] * 14 + [POW_NUKE] * 8
+        + [POW_HEAT] * 7 + [POW_HEALTH] * 5 + [POW_SHIELD] * 4
+    )
+    rng.shuffle(pro_pows)
+    for i, pw in enumerate(pro_pows):
+        zi = i % 4
+        P.scatter(1, zone_dry[zi], IT_POWERUP, lambda _n, p=pw: (p, 0, 0, 0), "powerup", 5.0, pro_only=True)
+
+    # ---------------- Enemies (1/4-scale of original 571 -> ~145 normal; Pro ~320) ----------------
+    enemy_plan = [
+        # Zone 1 Emerald Marsh: Rex + Stego (+ light Spitter)
+        (ZONE_MARSH, [(IT_REX, 10), (IT_STEGO, 12)]),
+        # Zone 2 Obsidian Lava Gorge: Ptera + Tricer + Rex
+        (ZONE_LAVA, [(IT_PTERA, 12), (IT_TRICER, 8), (IT_REX, 14)]),
+        # Zone 3 Crystal Canyon & Oasis: Spitter + Rex + Tricer + Ptera
+        (ZONE_CANYON, [(IT_SPITTER, 14), (IT_REX, 12), (IT_TRICER, 7), (IT_PTERA, 7)]),
+        # Zone 4 Ancient Nest Lagoon: mixed endgame
+        (ZONE_LAGOON, [(IT_REX, 16), (IT_SPITTER, 14), (IT_PTERA, 10), (IT_STEGO, 8), (IT_TRICER, 6)]),
     ]
-    PRO_ENEMY_MULTIPLIER = {
-        # Ratios measured from original Level1Pro.ter versus Level1.ter.
+    pro_mult = {
         IT_TRICER: 108 / 62,
         IT_REX: 403 / 188,
         IT_PTERA: 175 / 87,
         IT_STEGO: 146 / 79,
         IT_SPITTER: 430 / 155,
     }
-    enemy_counts = {}
-    for bi, plan in ENEMY_PLAN:
+    for zi, plan in enemy_plan:
         for et, n in plan:
-            got = P.scatter(n, biome_cells[bi], et, lambda _n: (0, 0, 0, 0), "enemy", 2.0)
-            enemy_counts[(bi, et)] = got
-            # Stock Pro is substantially harder, not merely 30% denser.
-            pro_extra = round(n * (PRO_ENEMY_MULTIPLIER[et] - 1.0))
-            P.scatter(pro_extra, biome_cells[bi], et,
-                      lambda _n: (0, 0, 0, 0), "enemy", 2.0, pro_only=True)
-    CONN_ENEMY = [IT_STEGO, IT_SPITTER, IT_PTERA, IT_REX, IT_REX]
-    for i, cells in enumerate(conn_cells):
-        P.scatter(rng.randint(2, 3), cells, CONN_ENEMY[i],
-                  lambda _n: (0, 0, 0, 0), "enemy", 2.0)
+            got = P.scatter(n, zone_dry[zi], et, lambda _n: (0, 0, 0, 0), "enemy", 2.0)
+            if got < n:
+                raise SystemExit(f"enemy placement failed zone={zi} type={et} ({got}/{n})")
+            pro_extra = round(n * (pro_mult[et] - 1.0))
+            P.scatter(pro_extra, zone_dry[zi], et, lambda _n: (0, 0, 0, 0), "enemy", 2.0, pro_only=True)
 
-    # Stock Pro triples the normal pickup density.  Its extra mix is mostly
-    # laser/tri/nuke (measured from the original pair of terrain files).
-    pro_pow = ([POW_TRI] * 14 + [POW_LASER] * 14 + [POW_NUKE] * 8 +
-               [POW_HEAT] * 6 + [POW_HEALTH] * 5 + [POW_SHIELD] * 4)
-    rng.shuffle(pro_pow)
-    for i, pw in enumerate(pro_pow):
-        # Keep the tiny lava-platform biome out of the Pro overflow.
-        pro_biomes = (0, 1, 3, 4)
-        P.scatter(1, biome_cells[pro_biomes[i % len(pro_biomes)]], IT_POWERUP,
-                  lambda _n, p=pw: (p, 0, 0, 0), "powerup", 6.0, pro_only=True)
+    # ---------------- Scenery (Trees, Mushrooms, Boulders, SporePods) ----------------
+    # Zone 1 Marsh: Fern/Bamboo/Cypress/StickPalm groves, Mushrooms, Boulders, SporePods
+    P.scatter(42, zone_flat[ZONE_MARSH], IT_TREE,
+              lambda i: (rng.choice((TREE_FERN, TREE_BAMBOO, TREE_CYPRESS, TREE_STICKPALM)), 0, 0, 0),
+              "tree", 2.5)
+    P.scatter(10, zone_flat[ZONE_MARSH], IT_MUSHROOM, lambda _n: (0, 0, 0, 0), "scenery", 2.8)
+    P.scatter(5, zone_flat[ZONE_MARSH], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 3.5)
+    P.scatter(8, zone_flat[ZONE_MARSH], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
 
-    # ---------------- scenery --------------------------------------------
-    def trees(bi, n, types, nn):
-        P.scatter(n, biome_cells[bi], IT_TREE,
-                  lambda _n: (rng.choice(types), 0, 0, 0), "tree", nn)
+    # Zone 2 Lava Gorge: Fern/PinePalm, Boulders
+    P.scatter(18, zone_flat[ZONE_LAVA], IT_TREE,
+              lambda i: (rng.choice((TREE_FERN, TREE_PINEPALM)), 0, 0, 0),
+              "tree", 3.0)
+    P.scatter(6, zone_flat[ZONE_LAVA], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 3.5)
 
-    trees(0, 33, (0, 1), 2.5)
-    trees(1, 45, (0, 1, 4), 2.5)
-    trees(2, 6, (1,), 3.5)
-    trees(3, 24, (1, 4), 3.5)
-    trees(4, 18, (0, 1, 4), 3.0)
+    # Zone 3 Crystal Canyon & Oasis: StickPalm/MainPalm/Fern, SporePods, Boulders
+    oasis_shore = [
+        (int(r), int(c)) for r, c in np.argwhere(
+            dilate8(dilate8(is_water_bed)) & (zone == ZONE_CANYON) & (kind == KIND_FLOOR)
+        ) if (r, c) in bfs
+    ]
+    P.scatter(14, oasis_shore, IT_TREE,
+              lambda i: (rng.choice((TREE_MAINPALM, TREE_STICKPALM)), 0, 0, 0), "tree", 2.5)
+    P.scatter(22, zone_flat[ZONE_CANYON], IT_TREE,
+              lambda i: (rng.choice((TREE_STICKPALM, TREE_MAINPALM, TREE_FERN)), 0, 0, 0),
+              "tree", 2.8)
+    P.scatter(12, zone_flat[ZONE_CANYON], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 2.8)
+    P.scatter(5, zone_flat[ZONE_CANYON], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 3.5)
 
-    P.scatter(6, biome_cells[0], IT_MUSHROOM, lambda _n: (0, 0, 0, 0), "scenery", 2.5)
-    P.scatter(8, biome_cells[0], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 2.5)
-    P.scatter(10, biome_cells[1], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 2.5)
-    P.scatter(4, biome_cells[2], IT_BUSH, lambda _n: (0, 0, 0, 1), "scenery", 3.0)
-    P.scatter(12, biome_cells[3], IT_CRYSTAL,
-              lambda i: (i % 3, 0, 0, 0), "scenery", 3.0)
-    P.scatter(4, biome_cells[2], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
-    P.scatter(4, biome_cells[3], IT_BOULDER, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
-    P.scatter(5, conn_cells[3], IT_ROLLBOULDER, lambda _n: (0, 0, 0, 0), "scenery", 2.0)
+    # Zone 4 Ancient Nest Lagoon: Bamboo/MainPalm/StickPalm/Fern, SporePods
+    P.scatter(34, zone_flat[ZONE_LAGOON], IT_TREE,
+              lambda i: (rng.choice((TREE_BAMBOO, TREE_MAINPALM, TREE_STICKPALM, TREE_FERN)), 0, 0, 0),
+              "tree", 2.6)
+    P.scatter(8, zone_flat[ZONE_LAGOON], IT_SPOREPOD, lambda _n: (0, 0, 0, 0), "scenery", 3.0)
 
-    # Gas vent cluster in Nest Caldera.  Fixed offsets frequently landed on
-    # eggs/reserved pads and silently produced a single vent.
-    nx, nz = BIOMES[4][1]
-    vent_cells = [(r, c) for r, c in biome_cells[4]
-                  if (c - nx) ** 2 + (r - nz) ** 2 <= 10 ** 2]
-    rng.shuffle(vent_cells)
-    placed = P.scatter(3, vent_cells, IT_GASVENT,
-                       lambda _n: (0, 0, 0, 0), "scenery", 2.0)
-    if placed != 3:
-        raise SystemExit(f"gas vent placement failed (got {placed}/3)")
-
-    return P, bfs, (scol, srow), enemy_counts, biome_cells
+    return P, bfs, (sc, sr), bridge_points
 
 
 # =========================================================================
@@ -1373,16 +1487,15 @@ def pack_items(items):
     return blob
 
 
-def write_ter(path, tex, hm_full_orig, path_layer, items, orig):
-    # remap heightmap tiles compactly (ascending original id keeps tile 0 -> 0)
-    used = sorted({int(v) & 0x0FFF for v in np.unique(hm_full_orig)})
-    assert len(used) <= 300, f"too many hm tiles: {len(used)}"
+def write_ter(path, tex, hm_grid, path_layer, items, tile_bank, orig):
+    used = sorted({int(v) & 0x0FFF for v in np.unique(hm_grid)})
+    assert len(used) <= 300, f"too many hm tiles: {len(used)} > 300"
     remap = {o: n for n, o in enumerate(used)}
     lut = np.zeros(4096, np.uint16)
     for o, n in remap.items():
         lut[o] = n
-    hm_out = (lut[hm_full_orig & 0x0FFF] | (hm_full_orig & 0xC000)).astype(">u2")
-    hm_blob = b"".join(orig.hm_tiles[o].tobytes() for o in used)
+    hm_out = (lut[hm_grid & 0x0FFF] | (hm_grid & 0xC000)).astype(">u2")
+    hm_blob = b"".join(tile_bank[o].tobytes() for o in used)
 
     n = W * D
     tex_off = 40
@@ -1410,25 +1523,19 @@ def write_ter(path, tex, hm_full_orig, path_layer, items, orig):
 
 
 def write_map_tga(path, tex, orig):
-    rgb = orig.tile_avg[np.asarray(tex) & 0x0FFF]           # (D,W,3)
+    rgb = orig.tile_avg[np.asarray(tex) & 0x0FFF]
     img = Image.fromarray(rgb, "RGB").convert("P", palette=Image.ADAPTIVE, colors=255)
     idx = np.asarray(img, np.uint8)
     ncol = int(idx.max()) + 1
     pal = img.getpalette()[:ncol * 3]
     header = struct.pack("<BBBHHBHHHHBB",
-                         0,          # id length
-                         1,          # colormap type
-                         9,          # RLE colormapped (same as shipped Map.tga)
-                         0, ncol, 24,          # colormap: origin, length, 24-bit
-                         0, D,       # x-origin, y-origin (matches original: 355)
-                         W, D, 8,
-                         0x20)       # descriptor: top-left origin
+                         0, 1, 9, 0, ncol, 24, 0, D, W, D, 8, 0x20)
     palette = bytearray()
     for i in range(ncol):
         r, g, b = pal[i * 3:i * 3 + 3]
-        palette += bytes((b, g, r))                          # TGA palettes are BGR
+        palette += bytes((b, g, r))
     body = bytearray()
-    for row in idx:                                          # RLE per row
+    for row in idx:
         i = 0
         while i < W:
             run = 1
@@ -1446,7 +1553,7 @@ def write_map_tga(path, tex, orig):
     path.write_bytes(header + palette + bytes(body))
 
 
-def write_preview(path, tex, kind, mean_map, items, orig):
+def write_preview(path, tex, mean_map, items, orig):
     S = 4
     rgb = orig.tile_avg[np.asarray(tex) & 0x0FFF].astype(np.float32)
     shade = 0.55 + 0.45 * (1.0 - np.abs(mean_map - 85.0) / 170.0)
@@ -1461,7 +1568,7 @@ def write_preview(path, tex, kind, mean_map, items, orig):
     for x, z, t, p, pro in items:
         if pro:
             continue
-        cx, cy = x // TILE_PX * S + S // 2, z // TILE_PX * S + S // 2
+        cx, cy = x * S // TILE_PX, z * S // TILE_PX
         if t == IT_EGG:
             col = egg_colors[p[0]]
             dr.ellipse((cx - 6, cy - 6, cx + 6, cy + 6), outline=col, width=2)
@@ -1472,6 +1579,12 @@ def write_preview(path, tex, kind, mean_map, items, orig):
         elif t == IT_START:
             dr.ellipse((cx - 8, cy - 8, cx + 8, cy + 8), outline="yellow", width=3)
             dr.text((cx - 3, cy - 6), "S", fill="yellow")
+        elif t == IT_STEPSTONE:
+            dr.rectangle((cx - 3, cy - 3, cx + 3, cy + 3), fill="#d0d0d0", outline="black")
+        elif t == IT_GASVENT:
+            dr.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), fill="#ffffff", outline="#60e0ff")
+        elif t == IT_ROLLBOULDER:
+            dr.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), fill="#907050", outline="black")
         elif t in enemy_colors:
             dr.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=enemy_colors[t])
         elif t == IT_POWERUP:
@@ -1482,22 +1595,20 @@ def write_preview(path, tex, kind, mean_map, items, orig):
             dr.rectangle((cx - 2, cy - 2, cx + 2, cy + 2), outline="#4080ff")
         elif t == IT_LAVA:
             dr.rectangle((cx - 2, cy - 2, cx + 2, cy + 2), outline="#ff8000")
-    # legend
-    legend = Image.new("RGB", (img.width, 70), (16, 16, 16))
+
+    legend = Image.new("RGB", (img.width, 72), (16, 16, 16))
     ld = ImageDraw.Draw(legend)
-    lx = 8
-    ld.text((lx, 6), "S start   P portal   E egg (color=species)", fill="white")
-    ld.text((lx, 22), "dots: red=rex brown=tricer purple=ptera olive=stego blue=spitter "
-                      "yellow=powerup cyan=crystal", fill="white")
-    ld.text((lx, 38), "squares: blue=water item orange=lava item", fill="white")
-    out = Image.new("RGB", (img.width, img.height + 70))
+    ld.text((8, 6), "S start   P portal   E egg (color=species 0..4)   gray-box=StepStone   white-dot=GasVent", fill="white")
+    ld.text((8, 24), "dots: red=rex brown=tricer purple=ptera olive=stego blue=spitter yellow=powerup cyan=crystal", fill="white")
+    ld.text((8, 42), "squares: blue=water patch orange=lava patch", fill="white")
+    out = Image.new("RGB", (img.width, img.height + 72))
     out.paste(img, (0, 0))
     out.paste(legend, (0, img.height))
     out.save(path)
 
 
 # =========================================================================
-# Validation
+# Strict Self-Validation
 # =========================================================================
 def validate_ter(path, orig, label):
     checks = []
@@ -1518,49 +1629,45 @@ def validate_ter(path, orig, label):
              for i in range(num_items)]
 
     checks.append(("1 header/sizes", ok and n_hm <= 300 and int((tex & 0xFFF).max()) < 258,
-                   f"{w}x{d}, {n_hm} hm tiles, max tex id {(tex & 0xFFF).max()}, "
-                   f"{num_items} items"))
+                   f"{w}x{d}, {n_hm} hm tiles (<=300), max tex {(tex & 0xFFF).max()}, {num_items} items"))
 
+    # Item rules
     xs = [it[0] for it in items]
     sorted_ok = all(xs[i] <= xs[i + 1] for i in range(len(xs) - 1))
     starts = [it for it in items if it[2] == IT_START]
     eggs = [it for it in items if it[2] == IT_EGG]
     egg_by_sp = Counter(e[3] for e in eggs)
-    eggs_ok = all(egg_by_sp.get(s, 0) == 5 for s in range(5)) and \
-        all((e[6] & 1) == 1 for e in eggs)
+    eggs_ok = all(egg_by_sp.get(s, 0) == 5 for s in range(5)) and all((e[6] & 1) == 1 for e in eggs)
     portals = sorted(it[3] for it in items if it[2] == IT_PORTAL)
+    rollboulder_count = sum(1 for it in items if it[2] == IT_ROLLBOULDER)
     types_ok = all(0 <= it[2] <= 19 for it in items)
     border_ok = all(4 <= it[0] // 32 < W - 4 and 4 <= it[1] // 32 < D - 4 for it in items)
     checks.append(("2 item rules", sorted_ok and len(starts) == 1 and eggs_ok
-                   and portals == [0, 1, 2, 3] and types_ok and border_ok,
+                   and portals == [0, 1, 2, 3] and rollboulder_count >= 4 and types_ok and border_ok,
                    f"sorted={sorted_ok} starts={len(starts)} eggs/sp={dict(egg_by_sp)} "
-                   f"portals={portals}"))
+                   f"portals={portals} rollboulders={rollboulder_count}"))
 
-    # per-cell stats LUTs
-    uniq = np.unique(hm)
-    mean_lut, eN, eS, eW, eE = {}, {}, {}, {}, {}
-    for v in uniq:
-        t = hm_tiles[v & 0x0FFF].astype(np.float64)
-        if v & 0x8000:
-            t = t[:, ::-1]
-        if v & 0x4000:
-            t = t[::-1, :]
-        mean_lut[v] = t.mean()
-        eN[v], eS[v], eW[v], eE[v] = t[0].mean(), t[-1].mean(), t[:, 0].mean(), t[:, -1].mean()
+    # Reconstruct exact vertex heightfield V_read[r,c] = corner[0,0] post-flip (just like Terrain.c!)
+    V_read = np.zeros((d, w), dtype=np.int32)
+    tile_min = np.zeros((d, w), dtype=np.int32)
+    tile_max = np.zeros((d, w), dtype=np.int32)
+    for r in range(d):
+        for c in range(w):
+            v = int(hm[r, c])
+            t = hm_tiles[v & 0x0FFF]
+            if v & 0x8000:
+                t = t[:, ::-1]
+            if v & 0x4000:
+                t = t[::-1, :]
+            V_read[r, c] = int(t[0, 0])
+            tile_min[r, c] = int(t.min())
+            tile_max[r, c] = int(t.max())
 
-    def grid_of(dic):
-        out = np.zeros((d, w))
-        for v in uniq:
-            out[hm == v] = dic[v]
-        return out
-    mean_g = grid_of(mean_lut)
-    gN, gS, gW, gE = grid_of(eN), grid_of(eS), grid_of(eW), grid_of(eE)
-
+    # Check 3: Containment & BFS
     border = np.zeros((d, w), bool)
     border[:3, :] = border[-3:, :] = border[:, :3] = border[:, -3:] = True
-    cont_ok = bool(np.all(pathl[border] == 9) and np.all(mean_g[border] == 255.0))
-    walk_open = (pathl == 0) & (mean_g <= 120.0)
-    # BFS from start
+    cont_ok = bool(np.all(pathl[border] == PATH_SOLID_ALL) and np.all(V_read[border] == 255))
+    walk_open = (pathl == PATH_OPEN) & (V_read <= 185)
     st = starts[0]
     sr, sc = st[1] // 32, st[0] // 32
     seen = np.zeros((d, w), bool)
@@ -1575,99 +1682,119 @@ def validate_ter(path, orig, label):
                 dq.append((nr, nc))
     edge_touch = bool(np.any(walk_open[0, :]) or np.any(walk_open[-1, :]) or
                       np.any(walk_open[:, 0]) or np.any(walk_open[:, -1]))
-    checks.append(("3 containment", cont_ok and not edge_touch,
-                   f"border path9+255={cont_ok}, floor touches edge={edge_touch}"))
+    bfs_count = int(seen.sum())
+    checks.append(("3 containment/BFS", cont_ok and not edge_touch and 5800 <= bfs_count <= 7000,
+                   f"border_solid={cont_ok}, edge_touch={edge_touch}, bfs_tiles={bfs_count}"))
 
-    # 4 connectivity
+    # Check 4: Connectivity of all 25 eggs, 4 portals, all powerups, crystals, mushrooms, enemies
     check_types = {IT_EGG, IT_PORTAL, IT_POWERUP, IT_CRYSTAL, IT_MUSHROOM} | set(ENEMY_TYPES)
-    unreachable = []
-    pad_egg_notes = []
-    ramp_ids_224 = set()
-    for v in uniq:
-        t = hm_tiles[v & 0x0FFF]
-        if t.max() >= 200 and t.min() <= 100:
-            ramp_ids_224.add(int(v) & 0x0FFF)
-    for it in items:
-        if it[2] not in check_types:
-            continue
-        r, c = it[1] // 32, it[0] // 32
-        if seen[r, c]:
-            continue
-        # nest-pad egg special case: flat ~224 pad with an adjacent mound ramp
-        tile_mean = mean_g[r, c]
-        if it[2] == IT_EGG and 200 <= tile_mean <= 240:
-            has_ramp = False
-            ramp_near_floor = False
-            for dr in (-1, 0, 1):
-                for dc in (-1, 0, 1):
-                    nr, nc = r + dr, c + dc
-                    if 0 <= nr < d and 0 <= nc < w and (hm[nr, nc] & 0xFFF) in ramp_ids_224 \
-                            and mean_g[nr, nc] < 200:
-                        has_ramp = True
-                        for dr2 in (-1, 0, 1):
-                            for dc2 in (-1, 0, 1):
-                                r2, c2 = nr + dr2, nc + dc2
-                                if 0 <= r2 < d and 0 <= c2 < w and seen[r2, c2]:
-                                    ramp_near_floor = True
-            if has_ramp and ramp_near_floor:
-                pad_egg_notes.append((c, r))
-                continue
-        unreachable.append((it[2], c, r))
+    unreachable = [(it[2], it[0] // 32, it[1] // 32)
+                   for it in items if it[2] in check_types and not seen[it[1] // 32, it[0] // 32]]
     checks.append(("4 connectivity", not unreachable,
-                   f"unreachable={unreachable[:6]} pad_eggs_ok={len(pad_egg_notes)}"))
+                   f"unreachable={unreachable[:6]} (25 eggs + 4 portals + all powerups/enemies reachable)"))
 
-    # 5 water/lava
-    wl_ok = True
-    detail5 = []
+    # Check 5: Exact 8x8 Water & Lava coverage [cr-3..cr+4, cc-3..cc+4] + ZERO dry TILE_ATTRIB_WATER / TILE_ATTRIB_LAVA leaks
+    flags_g = np.array([attribs[int(t) & 0xFFF][0] for t in tex.ravel()]).reshape(d, w)
+    w_attr = (flags_g & TILE_ATTRIB_WATER) != 0
+    l_attr = (flags_g & TILE_ATTRIB_LAVA) != 0
+
+    dry_water_leaks = int(np.sum(w_attr & (tile_max > 47)))
+    dry_lava_leaks = int(np.sum(l_attr & ((V_read != 67) | (tile_max != 67))))
+
+    w_cov = np.zeros((d, w), bool)
     for it in items:
-        r, c = it[1] // 32, it[0] // 32
-        tid = int(tex[r, c]) & 0x0FFF
-        flags = attribs[tid][0] if tid < len(attribs) else 0
         if it[2] == IT_WATER:
-            hmin = int(hm_tiles[hm[r, c] & 0xFFF].min()) * 4
-            if hmin >= 210 or not (flags & TILE_ATTRIB_WATER):
-                wl_ok = False
-                detail5.append(("water", c, r, hmin, hex(flags)))
-        elif it[2] == IT_LAVA:
-            hmin = int(hm_tiles[hm[r, c] & 0xFFF].min()) * 4
-            if hmin >= 305 or not (flags & TILE_ATTRIB_LAVA):
-                wl_ok = False
-                detail5.append(("lava", c, r, hmin, hex(flags)))
-    checks.append(("5 water/lava", wl_ok, f"bad={detail5[:5]}"))
+            cc, cr = it[0] // 32, it[1] // 32
+            c0, c1 = max(0, cc - 3), min(w, cc + 5)
+            r0, r1 = max(0, cr - 3), min(d, cr + 5)
+            w_cov[r0:r1, c0:c1] = True
+    hm41_mask = (tile_max == 41) & (tile_min == 41) & (pathl == PATH_OPEN)
+    uncov_water = int(np.sum((hm41_mask | w_attr) & ~w_cov))
 
-    # 6 spacing
+    l_cov = np.zeros((d, w), bool)
+    for it in items:
+        if it[2] == IT_LAVA:
+            cc, cr = it[0] // 32, it[1] // 32
+            c0, c1 = max(0, cc - 3), min(w, cc + 5)
+            r0, r1 = max(0, cr - 3), min(d, cr + 5)
+            l_cov[r0:r1, c0:c1] = True
+    uncov_lava = int(np.sum(l_attr & ~l_cov))
+
+    checks.append(("5 water/lava",
+                   dry_water_leaks == 0 and dry_lava_leaks == 0 and uncov_water == 0 and uncov_lava == 0,
+                   f"uncov_water={uncov_water}, uncov_lava={uncov_lava}, "
+                   f"dry_water_leaks={dry_water_leaks}, dry_lava_leaks={dry_lava_leaks}"))
+
+    # Check 6: No walkable vertex spikes + no 182 on path=0 + smooth walkable steps + perimeter corner check
+    has_182_walk = int(np.sum(((hm & 0xFFF) == 182) & (pathl == PATH_OPEN)))
+    walk_p0 = (pathl == PATH_OPEN)
+    dx_walk = np.abs(V_read[:, 1:] - V_read[:, :-1])
+    dz_walk = np.abs(V_read[1:, :] - V_read[:-1, :])
+    max_step_ew = int(dx_walk[walk_p0[:, :-1] & walk_p0[:, 1:]].max())
+    max_step_ns = int(dz_walk[walk_p0[:-1, :] & walk_p0[1:, :]].max())
+    max_step_all = max(max_step_ew, max_step_ns)
+    walk_nonspire = walk_p0 & (V_read <= 128)
+    max_step_nonspire = max(
+        int(dx_walk[walk_nonspire[:, :-1] & walk_nonspire[:, 1:]].max()),
+        int(dz_walk[walk_nonspire[:-1, :] & walk_nonspire[1:, :]].max()),
+    )
+    # Check pixel[0,0] continuity against tile corners [0,31], [31,0], [31,31] on path=0 AND perimeter corners!
+    corner_mismatch = 0
+    perimeter_spikes = 0
+    for r in range(d - 1):
+        for c in range(w - 1):
+            v = int(hm[r, c])
+            t = hm_tiles[v & 0x0FFF]
+            if v & 0x8000:
+                t = t[:, ::-1]
+            if v & 0x4000:
+                t = t[::-1, :]
+            if walk_p0[r, c]:
+                if (int(t[0, 31]) != int(V_read[r, c + 1])
+                        or int(t[31, 0]) != int(V_read[r + 1, c])
+                        or int(t[31, 31]) != int(V_read[r + 1, c + 1])):
+                    corner_mismatch += 1
+                # Any corner of a walk tile coming from a non-walk tile must be 85 (no cliff spikes!)
+                for dr, dc in ((0, 0), (0, 1), (1, 0), (1, 1)):
+                    if not walk_p0[r + dr, c + dc] and int(V_read[r + dr, c + dc]) != 85:
+                        perimeter_spikes += 1
+            elif walk_p0[r, c + 1] or walk_p0[r + 1, c] or walk_p0[r + 1, c + 1] or walk_p0[r - 1, c] or walk_p0[r, c - 1]:
+                # Non-walk tile bordering walk: corner[0,0] must match V_read[r,c], and if sharing a vertex with walk, no spike
+                if walk_p0[r - 1, c - 1] or walk_p0[r - 1, c] or walk_p0[r, c - 1]:
+                    if int(V_read[r, c]) != 85:
+                        perimeter_spikes += 1
+
+    checks.append(("6 vertex continuity",
+                   has_182_walk == 0 and corner_mismatch == 0 and perimeter_spikes == 0
+                   and max_step_nonspire <= 20 and max_step_all <= 22,
+                   f"182_on_path0={has_182_walk}, corner_mismatch={corner_mismatch}, "
+                   f"perimeter_spikes={perimeter_spikes}, max_step_nonspire={max_step_nonspire}, "
+                   f"max_step_all={max_step_all}"))
+
+    # Check 7: StepStone spacing <= 3.5 tiles & on flat hm=67 lava (each bridge >= 3 stones)
+    stones = [(it[0] / 32.0, it[1] / 32.0, it[6]) for it in items if it[2] == IT_STEPSTONE]
+    stone_ok = len(stones) >= 6 and all(s[2] == 1 for s in stones)
+    max_stone_nn = 0.0
+    for i, (cx, cz, _) in enumerate(stones):
+        r, c = int(cz), int(cx)
+        if not (tile_min[r, c] == 67 and tile_max[r, c] == 67 and l_attr[r, c]):
+            stone_ok = False
+        nn = min(math.hypot(cx - ox, cz - oz) for j, (ox, oz, _) in enumerate(stones) if j != i)
+        max_stone_nn = max(max_stone_nn, nn)
+    if max_stone_nn > 3.55:
+        stone_ok = False
+    checks.append(("7 stepstones", stone_ok,
+                   f"count={len(stones)}, all_reincarnate={all(s[2]==1 for s in stones)}, max_nn={max_stone_nn:.2f} tiles"))
+
+    # Check 8: Spacing (no duplicate non-hazard tiles; enemies/powerups separated)
     tiles_used = Counter((it[0] // 32, it[1] // 32) for it in items)
     dup = [k for k, v in tiles_used.items() if v > 1]
-    en = [(it[0] / 32, it[1] / 32) for it in items if it[2] in ENEMY_TYPES]
-    pw = [(it[0] / 32, it[1] / 32) for it in items if it[2] == IT_POWERUP]
-
-    def min_nn(pts):
-        if len(pts) < 2:
-            return 1e9
-        arr = np.array(pts)
-        best = 1e9
-        for i in range(len(arr)):
-            dd = np.hypot(arr[:, 0] - arr[i, 0], arr[:, 1] - arr[i, 1])
-            dd[i] = 1e9
-            best = min(best, dd.min())
-        return best
-    nn_e, nn_p = min_nn(en), min_nn(pw)
-    checks.append(("6 spacing", not dup and nn_e >= 1.0 and nn_p >= 5.0,
-                   f"dup_tiles={len(dup)} enemyNN={nn_e:.2f} powerupNN={nn_p:.2f}"))
-
-    # 7 heightmap continuity — only require seamless edges on walkable path-0
-    # cells. Cliff/slope bands (path 9 / 43) use the original kit and may have
-    # intentional grade changes against floor.
-    walkable = (pathl == 0)
-    bad_ew = (np.abs(gE[:, :-1] - gW[:, 1:]) >= 30) & walkable[:, :-1] & walkable[:, 1:]
-    bad_ns = (np.abs(gS[:-1, :] - gN[1:, :]) >= 30) & walkable[:-1, :] & walkable[1:, :]
-    n_bad = int(bad_ew.sum() + bad_ns.sum())
-    checks.append(("7 continuity", n_bad == 0, f"cracked pairs={n_bad}"))
+    checks.append(("8 item spacing", not dup, f"dup_tiles={len(dup)}"))
 
     floor_pct = 100.0 * np.count_nonzero(walk_open) / (w * d)
-    cliff_pct = 100.0 * np.count_nonzero(mean_g == 255.0) / (w * d)
+    cliff_pct = 100.0 * np.count_nonzero(V_read == 255) / (w * d)
     stats = dict(floor_pct=floor_pct, cliff_pct=cliff_pct, items=num_items,
-                 hm_tiles=n_hm, bfs_cells=int(seen.sum()))
+                 hm_tiles=n_hm, bfs_cells=bfs_count)
     return checks, stats, items
 
 
@@ -1687,44 +1814,18 @@ def main():
     import random
     rng = random.Random(SEED)
     orig = Original()
-    stats = tile_stats(orig)
-    hm2tex = derive_hm_to_tex(orig)
-    cliff_palette = derive_texture_palette(orig, 0)
-    assert cliff_palette, "original cliff texture palette is empty"
 
-    # sanity of the kit tiles we rely on
-    for tid, want in ((0, 255), (6, 85), (7, 67), (8, 41), (5, 109), (31, 224)):
-        got = orig.hm_tiles[tid].mean()
-        assert abs(got - want) < 6, f"hm tile {tid}: mean {got} != {want}"
+    print("building world ...")
+    world = build_world(rng)
 
-    print("building geometry ...")
-    kind, walk, conn_masks, lake_cells, lava_cells, pad_cells, biome_idx, ember_platforms = \
-        build_geometry(rng)
+    print("synthesizing exact-corner heightmap tiles ...")
+    hm_grid, path_layer, tile_bank = build_heightmaps(world, orig)
 
-    print("selecting heightmap tiles ...")
-    hm_grid = select_hm(kind, walk, stats, rng)
-    mean_map = np.zeros((D, W))
-    for v in np.unique(hm_grid):
-        mean_map[hm_grid == v] = stats[(v & 0xFFF, (v >> 15) & 1, (v >> 14) & 1)][2]
-
-    # Original cliff path grammar: lower band = 43 (slope), upper/cliff = 9.
-    # The 181 diagonal is lower-band in this stencil, so it remains 43; 182
-    # is floor-side and stays path 0.
-    hm_ids = hm_grid & 0x0FFF
-    path_layer = np.zeros((D, W), np.uint16)
-    path_layer[kind == CLIFF] = 9
-    path_layer[kind == CRAMP_U] = 9
-    path_layer[kind == CRAMP_L] = 43
-    # Upper kit tiles are solid even if they sit on the lower-band mask.
-    path_layer[np.isin(hm_ids, [166, 217, 180])] = 9
-
-    print("painting textures ...")
-    tex = paint_textures(kind, hm_grid, biome_idx, hm2tex, cliff_palette, rng)
+    print("painting biome textures ...")
+    tex = paint_textures(world, hm_grid, orig, rng)
 
     print("placing items ...")
-    P, bfs, start, enemy_counts, biome_cells = build_items(
-        rng, kind, hm_grid, mean_map, biome_idx, conn_masks,
-        lake_cells, lava_cells, pad_cells, stats, ember_platforms)
+    P, bfs, start, bridge_points = build_items(rng, world, hm_grid, path_layer)
 
     items_sorted = sorted(P.items, key=lambda it: (it[0], it[1]))
     normal_items = [it for it in items_sorted if not it[4]]
@@ -1732,15 +1833,12 @@ def main():
 
     OUT_TERRAIN.mkdir(parents=True, exist_ok=True)
     OUT_IMAGES.mkdir(parents=True, exist_ok=True)
-    n_tiles = write_ter(OUT_TERRAIN / "Level1.ter", tex, hm_grid, path_layer,
-                        normal_items, orig)
-    write_ter(OUT_TERRAIN / "Level1Pro.ter", tex, hm_grid, path_layer,
-              pro_items, orig)
+    write_ter(OUT_TERRAIN / "Level1.ter", tex, hm_grid, path_layer, normal_items, tile_bank, orig)
+    write_ter(OUT_TERRAIN / "Level1Pro.ter", tex, hm_grid, path_layer, pro_items, tile_bank, orig)
     shutil.copyfile(ORIG_DIR / "Level1.trt", OUT_TERRAIN / "Level1.trt")
     write_map_tga(OUT_IMAGES / "Map.tga", tex, orig)
-    write_preview(PREVIEW_PATH, tex, kind, mean_map, P.items, orig)
+    write_preview(PREVIEW_PATH, tex, world["tmean"], P.items, orig)
 
-    # ------------------------------------------------------------ validate
     print("\n=== VALIDATION REPORT ===")
     all_ok = True
     for label, f in (("Level1.ter", OUT_TERRAIN / "Level1.ter"),
@@ -1757,24 +1855,23 @@ def main():
 
     ok8, det8 = validate_tga(OUT_IMAGES / "Map.tga")
     all_ok &= ok8
-    print(f"\n  [{'PASS' if ok8 else 'FAIL'}] 8 Map.tga format: {det8}")
+    print(f"\n  [{'PASS' if ok8 else 'FAIL'}] 9 Map.tga format: {det8}")
 
-    # per-biome enemy density report
-    print("\n  biome enemy densities (normal, per 1000 walkable):")
-    for bi, (name, _, _) in enumerate(BIOMES):
-        walkable = len(biome_cells[bi])
-        n_en = sum(1 for x, z, t, p, pro in P.items
-                   if not pro and t in ENEMY_TYPES
-                   and biome_idx[z // 32, x // 32] == bi)
-        print(f"    {name:18s}: {n_en:4d} enemies / {walkable:5d} cells "
-              f"= {1000 * n_en / max(1, walkable):.1f}")
+    zone_names = ["Emerald Marsh", "Obsidian Lava Gorge", "Crystal Canyon", "Ancient Nest Lagoon"]
+    zone = world["zone"]
+    print("\n  zone breakdown (BFS tiles & normal enemies):")
+    for zi, zname in enumerate(zone_names):
+        ztiles = sum(1 for r, c in bfs if zone[r, c] == zi)
+        zen = sum(1 for x, z, t, p, pro in P.items
+                  if not pro and t in ENEMY_TYPES and zone[z // 32, x // 32] == zi)
+        print(f"    {zname:22s}: {ztiles:4d} BFS tiles, {zen:3d} enemies "
+              f"({1000 * zen / max(1, ztiles):.1f}/1k)")
 
     if not all_ok:
         print("\nVALIDATION FAILED")
         sys.exit(1)
     print("\nALL CHECKS PASSED")
 
-    # ------------------------------------------------------ install bundle
     if BUNDLE.is_dir():
         (BUNDLE / "Terrain").mkdir(parents=True, exist_ok=True)
         (BUNDLE / "Images").mkdir(parents=True, exist_ok=True)

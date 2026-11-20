@@ -26,13 +26,13 @@ extern	SDL_Window		*gSDLWindow;
 void SetProModeSettings(int pro)
 {
 	PRO_MODE					= pro;
-	SUPERTILE_ACTIVE_RANGE		= pro ? 32 : 24;	// 8x stock draw distance (was 4 / 3)
-	MAX_ENEMIES					= pro ? 30 : 8;
-	MAX_PTERA					= pro ? 10 : 2;
-	MAX_REX						= pro ? 8 : 2;
-	MAX_SPITTER					= pro ? 2 : 12;  // weird... but these values were in the original source
-	MAX_STEGO					= pro ? 10 : 2;
-	MAX_TRICER					= pro ? 10 : 3;
+	SUPERTILE_ACTIVE_RANGE		= pro ? 10 : 8;	// ~2.5x stock draw distance (~85x85 tiles) so zones stream smoothly without filling MAX_ENEMIES at frame 0
+	MAX_ENEMIES					= pro ? 30 : 14;
+	MAX_PTERA					= pro ? 10 : 4;
+	MAX_REX						= pro ? 8 : 4;
+	MAX_SPITTER					= pro ? 8 : 10;
+	MAX_STEGO					= pro ? 10 : 3;
+	MAX_TRICER					= pro ? 10 : 4;
 	EXPLODEGEOMETRY_DENOMINATOR	= pro ? 2 : 4;
 	YON_DISTANCE				= pro ? 22400.0f : 15200.0f;	// 8x stock fog/draw yon (was 2800 / 1900)
 	SONIC_SCREAM_RATE			= pro ? 4 : 4;
